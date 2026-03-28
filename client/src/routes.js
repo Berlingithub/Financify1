@@ -1,59 +1,59 @@
 import Dashboard from "./views/Dashboard.js";
-import UserProfile from "./views/UserProfile.js";
-import Transaction from "./views/Transaction";
-import Subscription from "./views/Subscription.js";
-import NewsFeed from "./views/NewsFeed";
-import Goals from "./views/Goals.js";
-import Scan from "./views/Scan";
+import User from "./views/UserProfile.js";
+import TableList from "./views/Transaction.js";
+import Typography from "./views/Subscription.js";
+import Icons from "./views/NewsFeed.js";
+import Maps from "./views/Goals.js";
+import Scan from "./views/Scan.js";
 
 const dashboardRoutes = [
   {
-    path: "/dashboard",
+    path: "dashboard",
     name: "Overview",
     icon: "nc-icon nc-chart-pie-35",
     component: Dashboard,
     layout: "/admin",
   },
   {
-    path: "/wallet",
+    path: "wallet",
     name: "Manage Wallet",
     icon: "nc-icon nc-notes",
-    component: Transaction,
+    component: TableList,
     layout: "/admin",
   },
   {
-    path: "/scan",
+    path: "scan",
     name: "Scan Receipts",
     icon: "nc-icon nc-zoom-split",
     component: Scan,
     layout: "/admin",
   },
   {
-    path: "/subscription",
+    path: "subscription",
     name: "Manage Subs",
     icon: "nc-icon nc-paper-2",
-    component: Subscription,
+    component: Typography,
     layout: "/admin",
   },
   {
-    path: "/goals",
+    path: "goals",
     name: "Goals",
     icon: "nc-icon nc-pin-3",
-    component: Goals,
+    component: Maps,
     layout: "/admin",
   },
   {
-    path: "/news",
+    path: "news",
     name: "News Feed",
     icon: "nc-icon nc-atom",
-    component: NewsFeed,
+    component: Icons,
     layout: "/admin",
   },
   {
-    path: "/user",
+    path: "user",
     name: "User Profile",
     icon: "nc-icon nc-circle-09",
-    component: UserProfile,
+    component: User,
     layout: "/admin",
   },
 ];
