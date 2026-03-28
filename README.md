@@ -13,7 +13,7 @@ Financify is a modern full-stack web application built with the MERN stack (Mong
 The idea is to help people view and study their overall spend analysis by developing a web app to analyze all the purchases. It is often noticed that we spend more than we earn which is wrong. To address it and keep a record of all the spending and earnings, we have created Financify wherein users can keep a log of their finances and manage them wisely.
 
 <p align="center">
-  <img src="./Assets/Screenshots/dashboard.jpg" width="800"/>
+  <img src="./Assets/Screenshots/dashboard.jpg" style="max-width:100%; height:auto;" />
 </p>
 
 ## Problem Statement
