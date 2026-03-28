@@ -9,6 +9,15 @@ Financify is a modern full-stack web application built with the MERN stack (Mong
 ![Node.js](https://img.shields.io/badge/Node.js-14+-green)
 ![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-blue)
 
+## About the project
+The idea is to help people view and study their overall spend analysis by developing a web app to analyze all the purchases. It is often noticed that we spend more than we earn which is wrong. To address it and keep a record of all the spending and earnings, we have created Financify wherein users can keep a log of their finances and manage them wisely.
+
+![Dashboard Preview](./dashboard.jpg)
+
+## Problem Statement
+We make transactions every day, and we are never consistent. We use cash, card, or digital wallets and it gets very difficult to actually track where our money goes by the end of the month. We need one single platform for us to track our transactions and help analyze how we can be smart consumers to save as much as possible by spending as little as possible. Rather than going through all the bills at the end of the month, what if we could just click a photo and everything else happens automatically?
+
+
 ## ✨ Features
 
 ### 📊 Complete Financial Overview
