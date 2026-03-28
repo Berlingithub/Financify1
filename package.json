@@ -1,0 +1,29 @@
+{
+  "name": "financify",
+  "version": "1.0.0",
+  "description": "Full-stack MERN personal finance management application",
+  "private": true,
+  "scripts": {
+    "start": "cd server && npm start",
+    "start:client": "cd client && npm start",
+    "start:server": "cd server && npm start",
+    "dev": "cd server && npm run dev",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm start",
+    "install:all": "npm install && cd client && npm install && cd ../server && npm install",
+    "build": "cd client && npm run build",
+    "build:client": "cd client && npm run build",
+    "serve": "npm run build && npm start",
+    "heroku-postbuild": "cd client && npm install && npm run build",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "finance",
+    "expense-tracker",
+    "mern",
+    "react",
+    "mongodb"
+  ],
+  "author": "",
+  "license": "ISC"
+}
