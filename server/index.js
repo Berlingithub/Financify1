@@ -18,6 +18,7 @@ const MongoStore    = require('connect-mongo');
 const passport      = require('passport');
 const LocalStrategy = require('passport-local');
 const cors          = require('cors');
+const cookieParser = require("cookie-parser");
 
 // 3️.  Local files
 const User          = require('./Models/User');
@@ -80,6 +81,8 @@ const store = MongoStore.create({
 });
 store.on('error', e => console.log('Session store error', e));
 
+app.set("trust proxy", 1); // 🔥 VERY IMPORTANT for Render
+
 app.use(
   session({
     store,
@@ -98,13 +101,16 @@ app.use(
   })
 );
 
+app.use(passport.initialize());
+app.use(passport.session());
+app.use(cookieParser());
+
 // 8️.  Passport
 passport.use(new LocalStrategy({ usernameField: 'email' }, User.authenticate()));
 passport.serializeUser(User.serializeUser());
 passport.deserializeUser(User.deserializeUser());
 
-app.use(passport.initialize());
-app.use(passport.session());
+
 
 // 9️.  Routes
 app.use('/',            basicRoutes);
