@@ -45,8 +45,11 @@ const Signin = () => {
     try {
       const response = await signIn({ email, password });
       console.log("Signin response:", response); // Log the response
-      console.log("Navigating to /admin/dashboard"); // Debugging
-      navigate("/admin/dashboard"); // Navigate after successful sign-in
+      // Wait a bit to ensure session cookie is set
+      setTimeout(() => {
+        navigate("/admin/dashboard");
+      }, 300);
+
     } catch (e) {
       console.log("Signin error:", e.response?.data || e.message); // Log the error
       setError(e.response?.data?.message || e.message || "Failed to sign in. Please try again.");
