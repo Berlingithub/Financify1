@@ -51,16 +51,17 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
   : ['http://localhost:3000'];
 
 app.use(cors({
-  origin: function(origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
+  // origin: function(origin, callback) {
+  //   // Allow requests with no origin (like mobile apps or curl requests)
+  //   if (!origin) return callback(null, true);
     
-    if (allowedOrigins.indexOf(origin) !== -1 || origin.includes('.vercel.app') || origin.includes('.netlify.app')) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  //   if (allowedOrigins.indexOf(origin) !== -1 || origin.includes('.vercel.app') || origin.includes('.netlify.app')) {
+  //     callback(null, true);
+  //   } else {
+  //     callback(new Error('Not allowed by CORS'));
+  //   }
+  // },
+  origin: "https://financify-frontend-navy.vercel.app",
   credentials: true
 }));
 
@@ -88,9 +89,10 @@ app.use(
     resave: false,
     saveUninitialized: false,
     cookie: {
+      secure: true,     // HTTPS only
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',  // Only use secure cookies in production (HTTPS)
-      sameSite: 'lax',  // CSRF protection
+      sameSite: 'none',  // allow cross-site cookies
       maxAge: 1000 * 60 * 60 * 24 * 7,  // 1 week
     },
   })
