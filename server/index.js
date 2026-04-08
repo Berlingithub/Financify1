@@ -38,10 +38,12 @@ const DATABASE_KEY   = process.env.DATABASE_KEY;          // your Atlas URI
 const SESSION_SECRET = process.env.SESSION_SECRET || 'super-secret-fallback';
 
 // 5️.  Connect to MongoDB (Mongoose 6+ doesn't need deprecated options)
-mongoose.connect(DATABASE_KEY);
-mongoose.connection
-  .on('error', err => console.error('❌ MongoDB error:', err))
-  .once('open', () => console.log('✅ MongoDB connected'));
+mongoose.connect(DATABASE_KEY)
+  .then(() => console.log('✅ MongoDB connected'))
+  .catch(err => {
+    console.error('❌ MongoDB connection error:', err.message);
+    console.log('⚠️ Server will start but database operations will fail');
+  });
 
 // 6️.  App instance & global middleware
 const app = express();
@@ -49,26 +51,36 @@ const app = express();
 // CORS configuration - allow frontend in development and production
 const allowedOrigins = process.env.ALLOWED_ORIGINS 
   ? process.env.ALLOWED_ORIGINS.split(',') 
-  : ['http://localhost:3000'];
+  : ['http://localhost:3000', 'http://localhost:3002'];
 
 app.use(cors({
-  // origin: function(origin, callback) {
-  //   // Allow requests with no origin (like mobile apps or curl requests)
-  //   if (!origin) return callback(null, true);
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
     
-  //   if (allowedOrigins.indexOf(origin) !== -1 || origin.includes('.vercel.app') || origin.includes('.netlify.app')) {
-  //     callback(null, true);
-  //   } else {
-  //     callback(new Error('Not allowed by CORS'));
-  //   }
-  // },
-  origin: "https://financify-frontend-navy.vercel.app",
+    if (allowedOrigins.indexOf(origin) !== -1 || origin.includes('.vercel.app') || origin.includes('.netlify.app')) {
+      callback(null, true);
+    } else {
+      console.log('CORS blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true
 }));
 
 app.use(morgan('tiny'));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
+
+// Add request timing middleware for debugging
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    console.log(`⏱️  ${req.method} ${req.path} - ${res.statusCode} (${duration}ms)`);
+  });
+  next();
+});
 
 // 7️.  Session store (connect‑mongo v4+ API) with TTL cleanup
 const store = MongoStore.create({
@@ -81,7 +93,10 @@ const store = MongoStore.create({
 });
 store.on('error', e => console.log('Session store error', e));
 
-app.set("trust proxy", 1); // 🔥 VERY IMPORTANT for Render
+app.set("trust proxy", 1); //  VERY IMPORTANT for Render
+
+// Cookie parser must be before session middleware
+app.use(cookieParser());
 
 app.use(
   session({
@@ -101,7 +116,6 @@ app.use(
 
 app.use(passport.initialize());
 app.use(passport.session());
-app.use(cookieParser());
 
 // 8️.  Passport
 passport.use(new LocalStrategy({ usernameField: 'email' }, User.authenticate()));
