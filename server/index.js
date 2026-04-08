@@ -87,15 +87,13 @@ app.use(
   session({
     store,
     name: 'session',
-    // secret: SESSION_SECRET,
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     cookie: {
-      secure: true,     // HTTPS only
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',  // Only use secure cookies in production (HTTPS)
-      sameSite: 'none',  // allow cross-site cookies
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',  // allow cross-site cookies in production
       maxAge: 1000 * 60 * 60 * 24 * 7,  // 1 week
     },
   })
