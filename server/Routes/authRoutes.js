@@ -16,19 +16,24 @@ const authLimiter = rateLimit({
 });
 
 router.post('/login', authLimiter, (req, res, next) => {
+    console.log(' Login attempt for:', req.body.email);
+    console.log(' Request origin:', req.headers.origin);
+    
     passport.authenticate("local", (err, user, info) => {
         if (err) {
-            console.error("Authentication error:", err);
+            console.error("❌ Authentication error:", err);
             return res.status(500).json({ message: "Authentication error" });
         }
         if (!user) {
+            console.log("⚠️ Invalid credentials for:", req.body.email);
             return res.status(400).json({ message: "Invalid email or password" });
         }
         req.logIn(user, (err) => {
             if (err) {
-                console.error("Login error:", err);
+                console.error("❌ Login error:", err);
                 return res.status(500).json({ message: "Login failed" });
             }
+            console.log("✅ Login successful for:", req.body.email);
             res.status(200).json({ 
                 message: "Login successful",
                 user: req.user 
