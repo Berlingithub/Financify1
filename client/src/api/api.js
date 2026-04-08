@@ -3,7 +3,43 @@ import axios from "axios";
 const API = axios.create({
     baseURL: process.env.REACT_APP_API_URL || "http://localhost:3001",
     withCredentials: true,
+    timeout: 15000, // 15 seconds timeout
+    headers: {
+        'Content-Type': 'application/json',
+    }
 })
+
+// Add request interceptor for debugging
+API.interceptors.request.use(
+    (config) => {
+        console.log('API Request:', config.method?.toUpperCase(), config.baseURL + config.url);
+        return config;
+    },
+    (error) => {
+        console.error('Request Error:', error);
+        return Promise.reject(error);
+    }
+);
+
+// Add response interceptor for better error handling
+API.interceptors.response.use(
+    (response) => {
+        console.log('API Response:', response.status, response.config.url);
+        return response;
+    },
+    (error) => {
+        if (error.code === 'ECONNABORTED') {
+            console.error('Request Timeout:', error.config.url);
+            return Promise.reject(new Error('Request timed out. The server is taking too long to respond. Please try again.'));
+        }
+        if (error.message === 'Network Error') {
+            console.error('Network Error:', error.config?.url);
+            return Promise.reject(new Error('Network error. Please check your internet connection and try again.'));
+        }
+        console.error('API Error:', error.response?.status, error.config?.url, error.message);
+        return Promise.reject(error);
+    }
+);
 
 // Auth
 export const signIn = async (data)=>await API.post('/auth/login',data)
