@@ -23,7 +23,8 @@ router.get('/',async(req,res)=>{
 
 
     }catch(e){
-        console.log(e.message)
+        console.log(e.message);
+        res.status(500).json({ message: "Error fetching overview data", error: e.message });
     }
 })
 module.exports = router;
