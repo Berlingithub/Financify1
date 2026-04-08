@@ -9,15 +9,16 @@ const { isLoggedIn } = require('../middlewares');
 // Rate limiting for authentication endpoints (prevent brute force attacks)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // Limit each IP to 5 requests per windowMs
+  max: process.env.NODE_ENV === 'development' ? 50 : 5, // More lenient in development
   message: { message: 'Too many login attempts, please try again after 15 minutes' },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
 router.post('/login', authLimiter, (req, res, next) => {
-    console.log(' Login attempt for:', req.body.email);
-    console.log(' Request origin:', req.headers.origin);
+    console.log('🔐 Login attempt for:', req.body.email);
+    console.log('📍 Request origin:', req.headers.origin);
+    console.log('⏰ Timestamp:', new Date().toISOString());
     
     passport.authenticate("local", (err, user, info) => {
         if (err) {
@@ -28,6 +29,7 @@ router.post('/login', authLimiter, (req, res, next) => {
             console.log("⚠️ Invalid credentials for:", req.body.email);
             return res.status(400).json({ message: "Invalid email or password" });
         }
+        console.log('✅ User authenticated, creating session...');
         req.logIn(user, (err) => {
             if (err) {
                 console.error("❌ Login error:", err);
