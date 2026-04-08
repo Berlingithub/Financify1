@@ -4,7 +4,8 @@
   "main": "index.js",
   "description": "Financify frontend - Personal Finance Management System",
   "scripts": {
-    "start": "react-scripts start"
+    "start": "react-scripts start",
+    "build": "react-scripts build"
   },
   "keywords": [],
   "author": "",
