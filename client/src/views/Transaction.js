@@ -89,10 +89,15 @@ function TableList() {
     }).catch(e => notifyFailure())
   }
 
-  const updateTrans = (data) => {
-    createTransaction(data).then(res => {
-      notifySuccess("Successfully Updated")
-    }).catch(e => notifyFailure())
+  const updateTrans = async (data) => {
+    try {
+      await updateTransaction(data);
+      await fetchData();
+      notifySuccess("Successfully Updated");
+    } catch (e) {
+      console.log("Update error:", e.message);
+      notifyFailure("Failed to update transaction");
+    }
   }
 
   const deleteTrans = async (id) => {
