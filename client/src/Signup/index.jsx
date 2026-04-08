@@ -27,12 +27,12 @@ const Signup = () => {
     try {
       const response = await signUp({ email, password, name });
       console.log("Signup response:", response);
-      setSuccess('Account created successfully! Redirecting to signin...');
+      setSuccess('Account created successfully! Redirecting to dashboard...');
       
-      // Redirect to signin page after successful signup
+      // User is already logged in after signup, redirect directly to dashboard
       setTimeout(() => {
-        navigate("/signin");
-      }, 2000);
+        navigate("/admin/dashboard");
+      }, 1500);
       
     } catch (e) {
       console.log("Signup error:", e.response?.data || e.message);
