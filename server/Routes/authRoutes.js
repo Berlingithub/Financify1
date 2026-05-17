@@ -5,11 +5,12 @@ const User = require("../Models/User");
 const Wallet = require("../Models/Wallet");
 const passport = require('passport');
 const { isLoggedIn } = require('../middlewares');
+const { IS_PRODUCTION } = require('../config/env');
 
 // Rate limiting for authentication endpoints (prevent brute force attacks)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'development' ? 50 : 5, // More lenient in development
+  max: IS_PRODUCTION ? 5 : 50,
   message: { message: 'Too many login attempts, please try again after 15 minutes' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -35,10 +36,16 @@ router.post('/login', authLimiter, (req, res, next) => {
                 console.error("❌ Login error:", err);
                 return res.status(500).json({ message: "Login failed" });
             }
-            console.log("✅ Login successful for:", req.body.email);
-            res.status(200).json({ 
-                message: "Login successful",
-                user: req.user 
+            req.session.save((saveErr) => {
+                if (saveErr) {
+                    console.error("❌ Session save error:", saveErr);
+                    return res.status(500).json({ message: "Login failed" });
+                }
+                console.log("✅ Login successful for:", req.body.email);
+                res.status(200).json({
+                    message: "Login successful",
+                    user: req.user,
+                });
             });
         });
     })(req, res, next);
@@ -69,14 +76,20 @@ router.post('/register', authLimiter, async (req, res, next) => {
         console.log("✅ User registered successfully");  // Don't log sensitive user data
 
         // Log in the user
-        req.login(registeredUser, err => {
-            if (err) { 
+        req.login(registeredUser, (err) => {
+            if (err) {
                 console.error("Login error:", err);
                 return res.status(500).json({ message: "Registration successful but login failed" });
             }
-            res.status(201).json({ 
-                message: "User registered successfully",
-                user: req.user 
+            req.session.save((saveErr) => {
+                if (saveErr) {
+                    console.error("Session save error:", saveErr);
+                    return res.status(500).json({ message: "Registration successful but login failed" });
+                }
+                res.status(201).json({
+                    message: "User registered successfully",
+                    user: req.user,
+                });
             });
         });
 
@@ -87,6 +100,13 @@ router.post('/register', authLimiter, async (req, res, next) => {
         }
         res.status(500).json({ message: "Registration failed. Please try again." });
     }
+});
+
+router.get('/me', (req, res) => {
+  res.json({
+    authenticated: req.isAuthenticated(),
+    user: req.user ? { id: req.user._id, email: req.user.email, name: req.user.name } : null,
+  });
 });
 
 router.get('/logout', (req, res) => {
