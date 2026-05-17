@@ -12,7 +12,8 @@ if (!process.env.DATABASE_KEY) {
 // 2️.  Core & third‑party modules
 const express       = require('express');
 const morgan        = require('morgan');
-const mongoose      = require('mongoose');
+const mongoose = require('mongoose');
+const { connectDatabase } = require('./config/database');
 const session       = require('express-session');
 const MongoStore    = require('connect-mongo');
 const passport      = require('passport');
@@ -31,41 +32,39 @@ const overview      = require('./Routes/overview');
 const incomeSource  = require('./Routes/incomeSources');
 const recurring     = require('./Routes/recurringPayments');
 const { isLoggedIn } = require('./middlewares');
+const {
+  IS_PRODUCTION,
+  IS_DEPLOYED,
+  IS_LOCAL_RUNTIME,
+  SECURE_COOKIES,
+  COOKIE_SAME_SITE,
+  allowedOrigins,
+} = require('./config/env');
 
 // 4.  Environment‑driven constants
 const PORT           = process.env.PORT || 3001;
-const DATABASE_KEY   = process.env.DATABASE_KEY;          // your Atlas URI
+const DATABASE_KEY   = process.env.DATABASE_KEY;
 const SESSION_SECRET = process.env.SESSION_SECRET || 'super-secret-fallback';
-
-// 5️.  Connect to MongoDB (Mongoose 6+ doesn't need deprecated options)
-mongoose.connect(DATABASE_KEY)
-  .then(() => console.log('✅ MongoDB connected'))
-  .catch(err => {
-    console.error('❌ MongoDB connection error:', err.message);
-    console.log('⚠️ Server will start but database operations will fail');
-  });
 
 // 6️.  App instance & global middleware
 const app = express();
 
-// CORS configuration - allow frontend in development and production
-const allowedOrigins = process.env.ALLOWED_ORIGINS 
-  ? process.env.ALLOWED_ORIGINS.split(',') 
-  : ['http://localhost:3000', 'http://localhost:3002'];
-
 app.use(cors({
-  origin: function(origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
+  origin(origin, callback) {
     if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.indexOf(origin) !== -1 || origin.includes('.vercel.app') || origin.includes('.netlify.app')) {
-      callback(null, true);
-    } else {
-      console.log('CORS blocked origin:', origin);
-      callback(new Error('Not allowed by CORS'));
+    if (
+      allowedOrigins.includes(origin) ||
+      (!IS_PRODUCTION && origin.startsWith('http://localhost:')) ||
+      origin.includes('.vercel.app') ||
+      origin.includes('.netlify.app') ||
+      origin.includes('.onrender.com')
+    ) {
+      return callback(null, true);
     }
+    console.log('CORS blocked origin:', origin);
+    callback(new Error('Not allowed by CORS'));
   },
-  credentials: true
+  credentials: true,
 }));
 
 app.use(morgan('tiny'));
@@ -82,84 +81,112 @@ app.use((req, res, next) => {
   next();
 });
 
-// 7️.  Session store (connect‑mongo v4+ API) with TTL cleanup
-const store = MongoStore.create({
-  mongoUrl: DATABASE_KEY,
-  collectionName: 'sessions',
-  touchAfter: 24 * 3600,  // Only update session once per day to reduce DB writes
-  crypto: { secret: SESSION_SECRET },
-  ttl: 60 * 60 * 24 * 14, // Automatically delete old sessions after 14 days (TTL)
-  autoRemove: 'native',   // Use MongoDB's native TTL mechanism for cleanup
-});
-store.on('error', e => console.log('Session store error', e));
+if (IS_DEPLOYED) {
+  app.set('trust proxy', 1); // required for secure cookies behind Render HTTPS proxy
+}
 
-app.set("trust proxy", 1); //  VERY IMPORTANT for Render
-
-// Cookie parser must be before session middleware
-app.use(cookieParser());
-
-app.use(
-  session({
-    store,
-    name: 'session',
-    secret: process.env.SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',  // Only use secure cookies in production (HTTPS)
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',  // allow cross-site cookies in production
-      maxAge: 1000 * 60 * 60 * 24 * 7,  // 1 week
-    },
-  })
-);
-
-app.use(passport.initialize());
-app.use(passport.session());
-
-// 8️.  Passport
+// 8️.  Passport (strategy only; session wired in start())
 passport.use(new LocalStrategy({ usernameField: 'email' }, User.authenticate()));
 passport.serializeUser(User.serializeUser());
 passport.deserializeUser(User.deserializeUser());
 
-
-
-// 9️.  Routes
-app.use('/',            basicRoutes);
-app.use('/auth',        authRoutes);
-app.use('/transaction', isLoggedIn, transactions);
-app.use('/goals',       isLoggedIn, goals);
-app.use('/income',      isLoggedIn, incomeSource);
-app.use('/recurring',   isLoggedIn, recurring);
-app.use('/overview',    isLoggedIn, overview);
-app.use('/profile',     isLoggedIn, profile);
-
-// 10.  Global Error Handler Middleware (MUST be after all routes)
-app.use((err, req, res, next) => {
-  // Log error for debugging (but don't expose to client)
-  console.error('❌ Error:', err.message);
-  
-  // Handle specific error types
-  if (err.name === 'ValidationError') {
-    return res.status(400).json({ 
-      message: 'Validation Error', 
-      details: err.message 
-    });
-  }
-  
-  if (err.name === 'UnauthorizedError') {
-    return res.status(401).json({ 
-      message: 'Unauthorized - Please log in' 
-    });
-  }
-  
-  // Default error response
-  const statusCode = err.statusCode || 500;
-  res.status(statusCode).json({ 
-    message: err.message || 'Internal Server Error',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+function setupSessionAndRoutes() {
+  // Reuse Mongoose's client — avoids a second connection and DEP0170 from connect-mongo's legacy driver
+  const store = MongoStore.create({
+    client: mongoose.connection.getClient(),
+    dbName: mongoose.connection.db.databaseName,
+    collectionName: 'sessions',
+    touchAfter: 24 * 3600,
+    crypto: { secret: SESSION_SECRET },
+    ttl: 60 * 60 * 24 * 14,
+    autoRemove: 'native',
   });
-});
+  store.on('error', e => console.log('Session store error', e));
 
-// 1️1️.  Start server
-app.listen(PORT, () => console.log(`🚀  Server running on port ${PORT}`));
+  app.use(cookieParser());
+  app.use(
+    session({
+      store,
+      name: 'session',
+      secret: SESSION_SECRET,
+      resave: false,
+      saveUninitialized: false,
+      cookie: {
+        httpOnly: true,
+        secure: SECURE_COOKIES,
+        sameSite: COOKIE_SAME_SITE,
+        maxAge: 1000 * 60 * 60 * 24 * 7,
+      },
+    })
+  );
+
+  app.use(passport.initialize());
+  app.use(passport.session());
+
+  app.use('/',            basicRoutes);
+  app.use('/auth',        authRoutes);
+  app.use('/transaction', isLoggedIn, transactions);
+  app.use('/goals',       isLoggedIn, goals);
+  app.use('/income',      isLoggedIn, incomeSource);
+  app.use('/recurring',   isLoggedIn, recurring);
+  app.use('/overview',    isLoggedIn, overview);
+  app.use('/profile',     isLoggedIn, profile);
+
+  app.use((err, req, res, next) => {
+    console.error('❌ Error:', err.message);
+
+    if (err.name === 'ValidationError') {
+      return res.status(400).json({
+        message: 'Validation Error',
+        details: err.message,
+      });
+    }
+
+    if (err.name === 'UnauthorizedError') {
+      return res.status(401).json({
+        message: 'Unauthorized - Please log in',
+      });
+    }
+
+    const statusCode = err.statusCode || 500;
+    res.status(statusCode).json({
+      message: err.message || 'Internal Server Error',
+      ...(!IS_PRODUCTION && { stack: err.stack }),
+    });
+  });
+}
+
+// 1️1️.  Connect DB, then start server
+async function start() {
+  try {
+    await connectDatabase(DATABASE_KEY);
+    console.log('✅ MongoDB connected');
+  } catch (err) {
+    console.error('❌ MongoDB connection error:', err.message);
+    if (/querySrv|queryTxt/i.test(err.message)) {
+      console.log(
+        '💡 Tip: Check internet/DNS, Atlas IP whitelist, or set DATABASE_KEY_DIRECT in .env'
+      );
+    }
+    process.exit(1);
+  }
+
+  setupSessionAndRoutes();
+  app.listen(PORT, () => {
+    const mode = IS_DEPLOYED ? 'deployed (HTTPS)' : 'local (HTTP)';
+    console.log(`🚀  Server running on port ${PORT} — ${mode}`);
+    console.log(
+      SECURE_COOKIES
+        ? '🔒 Session cookies: Secure + SameSite=None (Vercel → Render)'
+        : '🍪 Session cookies: non-secure (http://localhost — browser can store session)'
+    );
+    if (IS_LOCAL_RUNTIME && IS_PRODUCTION) {
+      console.log(
+        'ℹ️  NODE_ENV=production in .env is fine locally; cookies stay non-secure until deployed on Render.'
+      );
+    }
+    console.log('🌐 Allowed origins:', allowedOrigins.join(', ') || '(none set)');
+  });
+}
+
+start();
