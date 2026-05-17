@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
-const passportLocalMongoose = require('passport-local-mongoose');
+const passportLocalMongoose =
+  require('passport-local-mongoose').default || require('passport-local-mongoose');
 
 
 const userSchema = new mongoose.Schema({
@@ -28,9 +29,6 @@ const userSchema = new mongoose.Schema({
     }
 });
 
-
-// Indexes for better query performance
-userSchema.index({ email: 1 });  // Explicit index on email (already unique)
 
 userSchema.plugin(passportLocalMongoose,
     { usernameField: 'email' });
