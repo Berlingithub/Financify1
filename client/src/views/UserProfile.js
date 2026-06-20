@@ -23,9 +23,7 @@ function User() {
 
   const fetchIncome=async()=>{
     await getIncome().then((res)=>{
-      console.log(res.data)
       setData(res.data)
-      setPrevDate(data.salaryDate)
     }).catch(e=>console.log(e.message))
   }
   const fetchUserProfile=async()=>{
@@ -35,7 +33,7 @@ function User() {
   }
   const updateUserProfile=async(name,email)=>{
     await updateProfile({name,email}).then((res)=>{
-      console.log(res.data)
+      setProfileData({ name: res.data.name, email: res.data.email })
     }).catch(e=>console.log(e.message))
   }
   
