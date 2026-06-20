@@ -31,6 +31,7 @@ const profile       = require('./Routes/profile');
 const overview      = require('./Routes/overview');
 const incomeSource  = require('./Routes/incomeSources');
 const recurring     = require('./Routes/recurringPayments');
+const aiRoutes      = require('./Routes/ai');
 const { isLoggedIn } = require('./middlewares');
 const {
   IS_PRODUCTION,
@@ -44,7 +45,20 @@ const {
 // 4.  Environment‑driven constants
 const PORT           = process.env.PORT || 3001;
 const DATABASE_KEY   = process.env.DATABASE_KEY;
-const SESSION_SECRET = process.env.SESSION_SECRET || 'super-secret-fallback';
+
+if (IS_DEPLOYED && !process.env.SESSION_SECRET) {
+  console.error('⚠️ SESSION_SECRET is required when deployed. Set it in Render environment variables.');
+  process.exit(1);
+}
+
+const SESSION_SECRET =
+  process.env.SESSION_SECRET ||
+  (IS_LOCAL_RUNTIME ? 'dev-only-session-secret-not-for-production' : null);
+
+if (!SESSION_SECRET) {
+  console.error('⚠️ SESSION_SECRET is undefined! Check your .env file');
+  process.exit(1);
+}
 
 // 6️.  App instance & global middleware
 const app = express();
@@ -54,14 +68,13 @@ app.use(cors({
     if (!origin) return callback(null, true);
     if (
       allowedOrigins.includes(origin) ||
-      (!IS_PRODUCTION && origin.startsWith('http://localhost:')) ||
-      origin.includes('.vercel.app') ||
-      origin.includes('.netlify.app') ||
-      origin.includes('.onrender.com')
+      (!IS_PRODUCTION && origin.startsWith('http://localhost:'))
     ) {
       return callback(null, true);
     }
-    console.log('CORS blocked origin:', origin);
+    if (!IS_PRODUCTION) {
+      console.log('CORS blocked origin:', origin);
+    }
     callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
@@ -71,15 +84,16 @@ app.use(morgan('tiny'));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-// Add request timing middleware for debugging
-app.use((req, res, next) => {
-  const start = Date.now();
-  res.on('finish', () => {
-    const duration = Date.now() - start;
-    console.log(`⏱️  ${req.method} ${req.path} - ${res.statusCode} (${duration}ms)`);
+if (!IS_PRODUCTION) {
+  app.use((req, res, next) => {
+    const start = Date.now();
+    res.on('finish', () => {
+      const duration = Date.now() - start;
+      console.log(`⏱️  ${req.method} ${req.path} - ${res.statusCode} (${duration}ms)`);
+    });
+    next();
   });
-  next();
-});
+}
 
 if (IS_DEPLOYED) {
   app.set('trust proxy', 1); // required for secure cookies behind Render HTTPS proxy
@@ -131,6 +145,7 @@ function setupSessionAndRoutes() {
   app.use('/recurring',   isLoggedIn, recurring);
   app.use('/overview',    isLoggedIn, overview);
   app.use('/profile',     isLoggedIn, profile);
+  app.use('/ai',          isLoggedIn, aiRoutes);
 
   app.use((err, req, res, next) => {
     console.error('❌ Error:', err.message);
@@ -186,6 +201,11 @@ async function start() {
       );
     }
     console.log('🌐 Allowed origins:', allowedOrigins.join(', ') || '(none set)');
+    if (process.env.OPENAI_API_KEY) {
+      console.log('🤖 AI receipt parsing enabled (OpenAI Vision)');
+    } else {
+      console.log('ℹ️  OPENAI_API_KEY not set — AI receipt scanning disabled');
+    }
   });
 }
 
