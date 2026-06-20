@@ -48,26 +48,22 @@ function Dashboard() {
     diff = moment().daysInMonth()- Math.abs(diff);
   }
 
-  // const getData = async () => {
-  //   await getOverview().then(res => {
-  //     console.log(res.data)
-  //     setData(res.data)
-  //   }).catch(e => {
-  //     console.log(e.message)
-  //   })
-  // }
-
   const getData = async () => {
     try {
       const res = await getOverview();
-      console.log("API Response:", res.data);
       setData(res.data);
-      setLastUpdated(new Date()); // Update timestamp when data is fetched
+      setLastUpdated(new Date());
     } catch (e) {
-      console.log("Error fetching data:", e.message);
+      notifyFailure();
     }
   };
-  
+
+  const categoryBreakdown = data.categoryBreakdown || { labels: [], series: [], totals: {} };
+  const chartLabels = categoryBreakdown.labels?.length
+    ? categoryBreakdown.labels.map((label, i) => `${label} (${categoryBreakdown.series[i]}%)`)
+    : ['No data'];
+  const chartSeries = categoryBreakdown.series?.length ? categoryBreakdown.series : [1];
+  const legendColors = ['text-info', 'text-danger', 'text-warning', 'text-success', 'text-primary', 'text-secondary'];
 
   const deleteTrans = async (id) => {
     const data = { transaction_id: id }
@@ -79,14 +75,13 @@ function Dashboard() {
 
 
   useEffect(() => {
-    getData()
-    
-    // Auto-refresh data every minute
+    getData();
+
     const interval = setInterval(() => {
-      setLastUpdated(new Date());
-    }, 60000); // Update every minute
-    
-    return () => clearInterval(interval); // Cleanup on unmount
+      getData();
+    }, 60000);
+
+    return () => clearInterval(interval);
   }, [])
 
   // Helper function to format "time ago"
@@ -124,7 +119,7 @@ function Dashboard() {
                   <Col xs="7">
                     <div className="numbers">
                       <p className="card-category">Total Amount Spent </p>
-                      <Card.Title as="h4">₹ {data.totalAmountSpent}</Card.Title>
+                      <Card.Title as="h4">₹ {data.totalAmountSpent ?? 0}</Card.Title>
                     </div>
                   </Col>
                 </Row>
@@ -176,7 +171,7 @@ function Dashboard() {
                   <Col xs="7">
                     <div className="numbers">
                       <p className="card-category">No. of Transactions</p>
-                      <Card.Title as="h4">{data.transactionsCount}</Card.Title>
+                      <Card.Title as="h4">{data.transactionsCount ?? 0}</Card.Title>
                     </div>
                   </Col>
                 </Row>
@@ -238,10 +233,10 @@ function Dashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.recentTransactions?.map((transaction, index) => {
+                    {data.recentTransactions?.length ? data.recentTransactions.map((transaction, index) => {
                       return (
                         <TransactionRow
-                          key={index}
+                          key={transaction._id || index}
                           sNo={index+1}
                           name={transaction.name}
                           amount={transaction.amount}
@@ -254,7 +249,11 @@ function Dashboard() {
                       )
                     })
 
-                    }
+                    : (
+                      <tr>
+                        <td colSpan="7" className="text-center">No transactions this month</td>
+                      </tr>
+                    )}
                   </tbody>
                 </Table>
               </Card.Body>
@@ -265,7 +264,7 @@ function Dashboard() {
             <Card>
               <Card.Header>
                 <Card.Title as="h4">Categories</Card.Title>
-                <p className="card-category">Last Campaign Performance</p>
+                <p className="card-category">Spending by category this month</p>
               </Card.Header>
               <Card.Body>
                 <div
@@ -274,17 +273,21 @@ function Dashboard() {
                 >
                   <ChartistGraph
                     data={{
-                      labels: ["40%", "20%", "40%"],
-                      series: [40, 20, 40],
+                      labels: chartLabels,
+                      series: chartSeries,
                     }}
                     type="Pie"
                   />
                 </div>
                 <div className="legend">
-                  <i className="fas fa-circle text-info"></i>
-                  Household <i className="fas fa-circle text-danger"></i>
-                  Electronics <i className="fas fa-circle text-warning"></i>
-                  Others
+                  {categoryBreakdown.labels?.length ? categoryBreakdown.labels.map((label, i) => (
+                    <span key={label}>
+                      <i className={`fas fa-circle ${legendColors[i % legendColors.length]}`}></i>
+                      {' '}{label}{' '}
+                    </span>
+                  )) : (
+                    <span>No spending data yet</span>
+                  )}
                 </div>
                 <hr></hr>
               </Card.Body>
