@@ -18,18 +18,12 @@ function Admin() {
   const [hasImage, setHasImage] = useState(true);
   const location = useLocation();
   const mainPanel = useRef(null);
-  
-  console.log('Admin component - Current location:', location.pathname);
 
   const getRoutes = (routes) => {
-    console.log('Generating routes from:', routes);
-    const generatedRoutes = routes.map((prop, key) => {
+    return routes.map((prop, key) => {
       if (prop.layout === "/admin") {
-        // Use the exact path as defined in routes.js
         const routePath = prop.path;
-        console.log('Creating route:', routePath, 'for component:', prop.component.name);
         const Component = prop.component;
-        console.log('Rendering component:', Component.name, 'for path:', routePath);
         return (
           <Route
             path={routePath}
@@ -37,12 +31,9 @@ function Admin() {
             key={key}
           />
         );
-      } else {
-        return null;
       }
-    }).filter(Boolean); // Remove null values
-    console.log('Generated routes:', generatedRoutes);
-    return generatedRoutes;
+      return null;
+    }).filter(Boolean);
   };
   
   useEffect(() => {

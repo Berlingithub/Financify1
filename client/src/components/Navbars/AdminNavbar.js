@@ -23,16 +23,15 @@ function Header() {
   
   const logoutUser = async (e) => {
     e.preventDefault();
+    if (loading) return;
     setLoading(true);
     try {
-      // Try to call logout API, but don't wait for it
-      logout().catch(err => console.log("Logout API error:", err.message));
-    } catch (e) {
-      console.log("Logout error:", e.message);
+      await logout();
+    } catch (err) {
+      console.log('Logout API error:', err.message);
     } finally {
-      // Always redirect to home page immediately
-      navigate("/");
       setLoading(false);
+      navigate('/home', { replace: true });
     }
   };
 
@@ -79,9 +78,14 @@ function Header() {
             </Nav.Link>
           </Nav.Item>
           <Nav.Item>
-            <Nav.Link className="logout-link" href="/" onClick={logoutUser}>
-              Log out
-            </Nav.Link>
+            <button
+              type="button"
+              className="logout-link btn btn-link nav-link p-0 border-0"
+              onClick={logoutUser}
+              disabled={loading}
+            >
+              {loading ? 'Logging out...' : 'Log out'}
+            </button>
           </Nav.Item>
         </Nav>
       </Container>
@@ -105,6 +109,12 @@ function Header() {
             padding: 10px 15px;
             transition: color 0.3s ease;
             text-decoration: none;
+            background: transparent;
+            cursor: pointer;
+          }
+          .logout-link:disabled {
+            opacity: 0.7;
+            cursor: wait;
           }
           .logout-link:hover {
             color: #ff6347 !important;

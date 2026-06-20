@@ -55,8 +55,8 @@ function Typography() {
       // Handle both old format (array) and new paginated format (object with payments array)
       if (Array.isArray(res.data)) {
         setData(res.data);
-      } else if (res.data && res.data.payments) {
-        setData(res.data.payments);
+      } else if (res.data && res.data.recurringPayments) {
+        setData(res.data.recurringPayments);
       } else {
         setData([]);
       }
@@ -180,7 +180,7 @@ function Typography() {
                       >
                         <option>Choose...</option>
                         <option value="Monthly">Monthly</option>
-                        <option value="Annully">Annually</option>
+                        <option value="Annually">Annually</option>
                       </Form.Control>
                     </Form.Group>
                   </Col>
