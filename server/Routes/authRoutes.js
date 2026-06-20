@@ -5,7 +5,8 @@ const User = require("../Models/User");
 const Wallet = require("../Models/Wallet");
 const passport = require('passport');
 const { isLoggedIn } = require('../middlewares');
-const { IS_PRODUCTION } = require('../config/env');
+const { IS_PRODUCTION, SECURE_COOKIES, COOKIE_SAME_SITE } = require('../config/env');
+const { sanitizeUser } = require('../utils/sanitizeUser');
 
 // Rate limiting for authentication endpoints (prevent brute force attacks)
 const authLimiter = rateLimit({
@@ -17,10 +18,6 @@ const authLimiter = rateLimit({
 });
 
 router.post('/login', authLimiter, (req, res, next) => {
-    console.log('🔐 Login attempt for:', req.body.email);
-    console.log('📍 Request origin:', req.headers.origin);
-    console.log('⏰ Timestamp:', new Date().toISOString());
-    
     passport.authenticate("local", (err, user, info) => {
         if (err) {
             console.error("❌ Authentication error:", err);
@@ -41,10 +38,9 @@ router.post('/login', authLimiter, (req, res, next) => {
                     console.error("❌ Session save error:", saveErr);
                     return res.status(500).json({ message: "Login failed" });
                 }
-                console.log("✅ Login successful for:", req.body.email);
                 res.status(200).json({
                     message: "Login successful",
-                    user: req.user,
+                    user: sanitizeUser(req.user),
                 });
             });
         });
@@ -88,7 +84,7 @@ router.post('/register', authLimiter, async (req, res, next) => {
                 }
                 res.status(201).json({
                     message: "User registered successfully",
-                    user: req.user,
+                    user: sanitizeUser(req.user),
                 });
             });
         });
@@ -110,21 +106,35 @@ router.get('/me', (req, res) => {
 });
 
 router.get('/logout', (req, res) => {
-    req.logout((err) => {
-        if (err) {
-            console.error("Logout error:", err);
-            return res.status(500).json({ message: "Logout failed" });
-        }
-        // Destroy the session
-        req.session.destroy((err) => {
-            if (err) {
-                console.error("Session destruction error:", err);
-                return res.status(500).json({ message: "Session destruction failed" });
-            }
-            res.clearCookie('session'); // Clear the session cookie
-            res.json({ "message": "Successfully Logged out", "redirectUrl": "/" });
-        });
+  const finishLogout = () => {
+    req.session.destroy((err) => {
+      if (err) {
+        console.error('Session destruction error:', err);
+        return res.status(500).json({ message: 'Session destruction failed' });
+      }
+      res.clearCookie('session', {
+        httpOnly: true,
+        secure: SECURE_COOKIES,
+        sameSite: COOKIE_SAME_SITE,
+      });
+      res.json({ message: 'Successfully Logged out', redirectUrl: '/home' });
     });
+  };
+
+  // Passport 0.4.x: req.logout() is synchronous (no callback)
+  // Passport 0.6+: req.logout(callback) is required
+  if (req.logout.length >= 1) {
+    req.logout((err) => {
+      if (err) {
+        console.error('Logout error:', err);
+        return res.status(500).json({ message: 'Logout failed' });
+      }
+      finishLogout();
+    });
+  } else {
+    req.logout();
+    finishLogout();
+  }
 });
 
 

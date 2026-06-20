@@ -10,6 +10,7 @@ import "@fortawesome/fontawesome-free/css/all.min.css";
 
 // import AdminLayout from "layouts/Admin.js";
 import AdminLayout from './layouts/Admin.js';
+import ProtectedRoute from './components/ProtectedRoute';
 import Home from './pages';
 import SigninPage from './pages/signin';
 import SignupPage from './pages/signup';
@@ -21,7 +22,11 @@ ReactDOM.render(
     <BrowserRouter>
       <Routes>
         
-        <Route path="/admin/*" element={<AdminLayout />} />
+        <Route path="/admin/*" element={
+          <ProtectedRoute>
+            <AdminLayout />
+          </ProtectedRoute>
+        } />
         
         <Route path="/home" element={<Home />} />
         <Route path="/signin" element={<SigninPage />} />
