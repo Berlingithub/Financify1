@@ -235,6 +235,7 @@ function TableList() {
                       <option value="bitcoin">Bitcoin</option>
                       <option value="UPI">UPI</option>
                       <option value="net banking">Net Banking</option>
+                      <option value="digital wallets">Digital Wallets</option>
                       <option value="others">Others</option>
                     </Form.Control>
                   </Form.Group>

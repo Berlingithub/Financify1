@@ -29,7 +29,7 @@ const walletSchema = new mongoose.Schema({
         },
         repeatDuration:{
             type:String,
-            enum:["Monthly","Annully"]
+            enum:["Monthly","Annually","Annully"]
         },
         date:{
             type:Date,
