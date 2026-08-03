@@ -36,7 +36,7 @@ API.interceptors.response.use(
             return Promise.reject(new Error('Request timed out. The server is taking too long to respond. Please try again.'));
         }
         if (error.message === 'Network Error') {
-            return Promise.reject(new Error('Network error. Please check your internet connection and try again.'));
+            return Promise.reject(new Error('Cannot reach the backend server. Make sure the server is running on port 3001 (cd server && npm start).'));
         }
         return Promise.reject(error);
     }
