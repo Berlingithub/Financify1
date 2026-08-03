@@ -161,8 +161,11 @@ That's it! You're ready to go. 🎉
 Financify-clean/
 ├── client/                     # React Frontend (Port 3000)
 │   ├── public/                 # Static files
+│   ├── .env.example            # Local API URL template
+│   ├── .env.production         # Production API URL template (Vercel)
 │   └── src/
 │       ├── api/                # API calls (Axios)
+│       │   └── api.js
 │       ├── assets/             # CSS, SCSS, images
 │       ├── components/         # Reusable UI components
 │       │   ├── Navbar/
@@ -182,12 +185,16 @@ Financify-clean/
 │           └── UserProfile.js
 │
 ├── server/                     # Node.js Backend (Port 3001)
+│   ├── config/                 # App configuration
+│   │   ├── database.js         # MongoDB connection & DNS fallback
+│   │   └── env.js              # Production vs local cookie/CORS settings
 │   ├── Models/                 # MongoDB schemas
 │   │   ├── User.js
 │   │   ├── Wallet.js
 │   │   └── Goals.js
 │   ├── Routes/                 # REST API endpoints
-│   │   ├── authRoutes.js       # Login, Register, Logout
+│   │   ├── authRoutes.js       # Login, Register, Logout, /me
+│   │   ├── Basic.js            # Health check route
 │   │   ├── transactions.js     # CRUD for transactions
 │   │   ├── goals.js            # CRUD for goals
 │   │   ├── recurringPayments.js
@@ -195,10 +202,12 @@ Financify-clean/
 │   │   ├── overview.js
 │   │   └── profile.js
 │   ├── index.js                # Express server setup
-│   └── middlewares.js          # Auth guards, error handlers
+│   ├── middlewares.js          # Auth guards
+│   ├── ExpressError.js         # Custom error class
+│   └── test-connection.js      # Backend connection test script
 │
-├── .env                        # Environment variables
-├── .env.example                # Template
+├── .env                        # Environment variables (not committed)
+├── .env.example                # Root env template (DB, session, CORS)
 ├── .gitignore                  # Git ignore rules
 └── package.json                # Root scripts
 ```
