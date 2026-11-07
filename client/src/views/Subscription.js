@@ -3,20 +3,18 @@ import SubscriptionRow from "components/SubscriptionRow";
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
-// react-bootstrap components
 import {
-  Badge,
   Button,
   Card,
   Form,
-  Navbar,
-  Nav,
   Table,
   Container,
   Row,
   Col,
 } from "react-bootstrap";
 import { getPayment, createPayment, deletePayment, updatePayment } from '../api/api';
+
+const PAGE_SIZE = 20;
 
 function Typography() {
 
@@ -29,7 +27,7 @@ function Typography() {
     draggable: true,
     progress: undefined,
     });
-  const notifyFailure = ()=>toast.error("An Error Occured", {
+  const notifyFailure = (message = "An Error Occured")=>toast.error(message, {
     position: "top-right",
     autoClose: 5000,
     hideProgressBar: false,
@@ -40,50 +38,86 @@ function Typography() {
     });
   
   const [data, setData] = useState([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [newName, setNewName] = useState("")
   const [newAmount, setNewAmount] = useState("")
   const [newRepeatDuration, setNewRepeatDuration] = useState("");
   const [newDate, setNewDate] = useState("")
 
-  const paymentData = {
-    name: newName, amount: newAmount, repeatDuration: newRepeatDuration, date: newDate
-  }
+  const applyListResponse = (res, append) => {
+    const payload = res.data;
+    let list = [];
+    if (Array.isArray(payload)) {
+      list = payload;
+    } else if (payload?.recurringPayments) {
+      list = payload.recurringPayments;
+      setHasMore(Boolean(payload.hasMore));
+    }
+    setData((prev) => (append ? [...prev, ...list] : list));
+  };
 
-  const fetchData = async () => {
-    await getPayment().then(res => {
-      console.log(res.data)
-      // Handle both old format (array) and new paginated format (object with payments array)
-      if (Array.isArray(res.data)) {
-        setData(res.data);
-      } else if (res.data && res.data.recurringPayments) {
-        setData(res.data.recurringPayments);
-      } else {
-        setData([]);
-      }
-    }).catch(e => {
-      console.log(e.message)
-    })
-  }
+  const fetchPage = async (pageNum, append = false) => {
+    const res = await getPayment(pageNum, PAGE_SIZE);
+    applyListResponse(res, append);
+    setPage(pageNum);
+  };
+
+  const fetchData = () => fetchPage(1, false);
+
+  const loadMore = async () => {
+    if (!hasMore || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      await fetchPage(page + 1, true);
+    } catch (e) {
+      notifyFailure(e.response?.data?.message || e.message);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
   const newSubscription = async (e)=> {
     e.preventDefault()
-    await createPayment(paymentData).then(async res => {
-      console.log(res.data)
-      notifySuccess("Added new subscription")
-      await fetchData()
-    }).catch(e => notifyFailure())
+    if (!newName.trim() || !newAmount || !newRepeatDuration || !newDate) {
+      notifyFailure('Please fill all subscription fields');
+      return;
+    }
+    const amount = Number(newAmount);
+    if (Number.isNaN(amount) || amount <= 0) {
+      notifyFailure('Amount must be a positive number');
+      return;
+    }
+    const paymentData = {
+      name: newName.trim(),
+      amount,
+      repeatDuration: newRepeatDuration,
+      date: newDate,
+    };
+    try {
+      await createPayment(paymentData);
+      notifySuccess("Added new subscription");
+      setNewName('');
+      setNewAmount('');
+      setNewRepeatDuration('');
+      setNewDate('');
+      await fetchData();
+    } catch (err) {
+      notifyFailure(err.response?.data?.message);
+    }
   }
 
   const deleteSubscription = async(id)=>{
-    await deletePayment({rpayment_id:id}).then(res=>{
-      console.log(res.data);
+    await deletePayment({rpayment_id:id}).then(()=>{
       notifySuccess("Succesfully deleted");
       fetchData()
-    }).catch(e=>notifyFailure())
+    }).catch(e=>notifyFailure(e.response?.data?.message))
   }
 
 
   useEffect(() => {
-    fetchData()
+    fetchData().catch((e) => notifyFailure(e.response?.data?.message));
   }, [])
   return (
     <>
@@ -108,9 +142,13 @@ function Typography() {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.map((subscription, index) => {
-                      return (
+                    {data.length === 0 ? (
+                      <tr>
+                        <td colSpan="6" className="text-center">No subscriptions yet</td>
+                      </tr>
+                    ) : data.map((subscription, index) => (
                         <SubscriptionRow
+                          key={subscription._id || index}
                           sNo={index + 1}
                           name={subscription.name}
                           amount={subscription.amount}
@@ -119,11 +157,17 @@ function Typography() {
                           deleteSubscription={deleteSubscription}
                           _id={subscription._id}
                         />
-                      )
-                    })}
+                    ))}
 
                   </tbody>
                 </Table>
+                {hasMore && (
+                  <div className="text-center py-3">
+                    <Button variant="outline-primary" onClick={loadMore} disabled={loadingMore}>
+                      {loadingMore ? 'Loading…' : 'Load more subscriptions'}
+                    </Button>
+                  </div>
+                )}
               </Card.Body>
             </Card>
           </Col>
@@ -135,7 +179,7 @@ function Typography() {
                   Simply fill out the form below to keep a track of your subscriptions
                 </p>
               </Card.Header>
-              <Form>
+              <Form onSubmit={newSubscription}>
                 <Row>
                   <Col className="pl-4" md="6">
                     <Form.Group>
@@ -145,6 +189,7 @@ function Typography() {
                         type="text"
                         value={newName}
                         onChange={e => setNewName(e.target.value)}
+                        required
                       ></Form.Control>
                     </Form.Group>
                   </Col>
@@ -154,7 +199,9 @@ function Typography() {
                       <Form.Control
                         placeholder="Date"
                         type="date"
-                        onChange={e => setNewDate(e.target.valueAsDate)}
+                        value={newDate}
+                        onChange={e => setNewDate(e.target.value)}
+                        required
                       ></Form.Control>
                     </Form.Group>
                   </Col>
@@ -166,8 +213,11 @@ function Typography() {
                       <Form.Control
                         placeholder="Amount"
                         type="number"
+                        min="0"
+                        step="0.01"
                         value={newAmount}
                         onChange={e => setNewAmount(e.target.value)}
+                        required
                       ></Form.Control>
                     </Form.Group>
                   </Col>
@@ -175,10 +225,11 @@ function Typography() {
                     <Form.Group style={{marginLeft:"1rem"}}>
                       <label>Repeat Duration</label>
                       <Form.Control as="select"
+                        value={newRepeatDuration}
                         onChange={(e) => setNewRepeatDuration(e.target.value)}
                         required
                       >
-                        <option>Choose...</option>
+                        <option value="">Choose...</option>
                         <option value="Monthly">Monthly</option>
                         <option value="Annually">Annually</option>
                       </Form.Control>
@@ -186,7 +237,7 @@ function Typography() {
                   </Col>
                 </Row>
                 <div className="d-grid gap-2 pl-2">
-                  <Button className="btn-fill pull-right" variant="success" type="button" onClick={newSubscription}>
+                  <Button className="btn-fill pull-right" variant="success" type="submit">
                     Add Subscription
                   </Button>
                 </div>
