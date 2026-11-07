@@ -11,9 +11,10 @@ if (!process.env.DATABASE_KEY) {
 }
 // 2️.  Core & third‑party modules
 const express       = require('express');
+const helmet        = require('helmet');
 const morgan        = require('morgan');
 const mongoose = require('mongoose');
-const { connectDatabase } = require('./config/database');
+const { connectDatabase, printMongoHelp } = require('./config/database');
 const session       = require('express-session');
 const MongoStore    = require('connect-mongo');
 const passport      = require('passport');
@@ -33,6 +34,8 @@ const incomeSource  = require('./Routes/incomeSources');
 const recurring     = require('./Routes/recurringPayments');
 const aiRoutes      = require('./Routes/ai');
 const { isLoggedIn } = require('./middlewares');
+const { verifyMutationOrigin } = require('./middlewares/originCheck');
+const { setupStaticClient } = require('./setupStaticClient');
 const {
   IS_PRODUCTION,
   IS_DEPLOYED,
@@ -62,6 +65,13 @@ if (!SESSION_SECRET) {
 
 // 6️.  App instance & global middleware
 const app = express();
+
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+  })
+);
 
 app.use(cors({
   origin(origin, callback) {
@@ -137,6 +147,8 @@ function setupSessionAndRoutes() {
   app.use(passport.initialize());
   app.use(passport.session());
 
+  app.use(verifyMutationOrigin);
+
   app.use('/',            basicRoutes);
   app.use('/auth',        authRoutes);
   app.use('/transaction', isLoggedIn, transactions);
@@ -146,6 +158,11 @@ function setupSessionAndRoutes() {
   app.use('/overview',    isLoggedIn, overview);
   app.use('/profile',     isLoggedIn, profile);
   app.use('/ai',          isLoggedIn, aiRoutes);
+
+  const servingClient = setupStaticClient(app);
+  if (servingClient) {
+    console.log('📦 Serving React app from client/build');
+  }
 
   app.use((err, req, res, next) => {
     console.error('❌ Error:', err.message);
@@ -177,12 +194,7 @@ async function start() {
     await connectDatabase(DATABASE_KEY);
     console.log('✅ MongoDB connected');
   } catch (err) {
-    console.error('❌ MongoDB connection error:', err.message);
-    if (/querySrv|queryTxt/i.test(err.message)) {
-      console.log(
-        '💡 Tip: Check internet/DNS, Atlas IP whitelist, or set DATABASE_KEY_DIRECT in .env'
-      );
-    }
+    printMongoHelp(err);
     process.exit(1);
   }
 
