@@ -4,18 +4,18 @@
   "description": "Full-stack MERN personal finance management application",
   "private": true,
   "scripts": {
-    "start": "cd server && npm start",
+    "start": "concurrently -n server,client -c blue,green \"npm run start:server\" \"npm run start:client\"",
     "start:client": "cd client && npm start",
     "start:server": "cd server && npm start",
-    "dev": "cd server && npm run dev",
+    "dev": "concurrently -n server,client -c blue,green \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "cd server && npm run dev",
     "dev:client": "cd client && npm start",
     "install:all": "npm install && cd client && npm install && cd ../server && npm install",
     "build": "cd client && npm run build",
     "build:client": "cd client && npm run build",
-    "serve": "npm run build && npm start",
+    "serve": "npm run build && cross-env SERVE_CLIENT=true npm run start:server",
     "heroku-postbuild": "cd client && npm install && npm run build",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "cd server && npm test"
   },
   "keywords": [
     "finance",
@@ -25,5 +25,9 @@
     "mongodb"
   ],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3"
+  }
 }
