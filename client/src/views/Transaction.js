@@ -1,23 +1,19 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import TransactionRow from "../components/TransactionRow.js";
 import { getTransaction, createTransaction, updateTransaction, deleteTransaction } from '../api/api';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-// react-bootstrap components
 import {
-  Badge,
   Button,
   Card,
   Form,
-  Navbar,
-  Nav,
   Table,
   Container,
   Row,
   Col,
-  OverlayTrigger,
-  Tooltip
 } from "react-bootstrap";
+
+const PAGE_SIZE = 50;
 
 function TableList() {
 
@@ -41,6 +37,10 @@ function TableList() {
     });
 
   const [data, setData] = useState([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [newName, setNewName] = useState("");
   const [newCategory, setNewCategory] = useState("");
   const [newAmount, setNewAmount] = useState("");
@@ -51,25 +51,44 @@ function TableList() {
     name: newName, category: newCategory, amount: newAmount, date: newDate, paymentMode: newPaymentMode
   }
 
-  const fetchData = async () => {
-    await getTransaction().then(res => {
-      console.log(res.data)
-      // Handle both old format (array) and new paginated format (object with transactions array)
-      if (Array.isArray(res.data)) {
-        setData(res.data);
-      } else if (res.data && res.data.transactions) {
-        setData(res.data.transactions);
-      } else {
-        setData([]);
-      }
-    }).catch(e => {
-      console.log(e.message)
-    })
-  }
+  const applyListResponse = useCallback((res, append) => {
+    const payload = res.data;
+    let list = [];
+    if (Array.isArray(payload)) {
+      list = payload;
+    } else if (payload?.transactions) {
+      list = payload.transactions;
+      setHasMore(Boolean(payload.hasMore));
+      setTotalCount(payload.totalTransactions ?? list.length);
+    }
+    setData((prev) => (append ? [...prev, ...list] : list));
+  }, []);
+
+  const fetchPage = async (pageNum, append = false) => {
+    const res = await getTransaction(pageNum, PAGE_SIZE);
+    applyListResponse(res, append);
+    setPage(pageNum);
+  };
+
+  const refreshList = async () => {
+    await fetchPage(1, false);
+  };
 
   useEffect(() => {
-    fetchData()
-  }, [])
+    refreshList().catch((e) => notifyFailure(e.response?.data?.message || e.message));
+  }, []);
+
+  const loadMore = async () => {
+    if (!hasMore || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      await fetchPage(page + 1, true);
+    } catch (e) {
+      notifyFailure(e.response?.data?.message || e.message);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const newTransaction = (e) => {
     e.preventDefault()
@@ -77,35 +96,34 @@ function TableList() {
       notifyFailure("Please fill all required fields")
       return
     }
-    createTransaction(transactionData).then(async res => {
-      await fetchData()
+    createTransaction(transactionData).then(async () => {
+      await refreshList()
       notifySuccess("Successfully Added")
-      // Clear form
       setNewName("")
       setNewAmount("")
       setNewCategory("")
       setNewPaymentMode("")
       setNewDate("")
-    }).catch(e => notifyFailure())
+    }).catch((e) => notifyFailure(e.response?.data?.message || e.message))
   }
 
-  const updateTrans = async (data) => {
+  const updateTrans = async (payload) => {
     try {
-      await updateTransaction(data);
-      await fetchData();
+      await updateTransaction(payload);
+      await refreshList();
       notifySuccess("Successfully Updated");
     } catch (e) {
-      console.log("Update error:", e.message);
-      notifyFailure("Failed to update transaction");
+      notifyFailure(e.response?.data?.message || e.message);
+      throw e;
     }
   }
 
   const deleteTrans = async (id) => {
-    const data = { transaction_id: id }
-    deleteTransaction(data).then(async res => {
-      await fetchData()
+    const body = { transaction_id: id }
+    deleteTransaction(body).then(async () => {
+      await refreshList()
       notifySuccess("Successfully Deleted")
-    }).catch(e => notifyFailure())
+    }).catch((e) => notifyFailure(e.response?.data?.message || e.message))
   }
 
 
@@ -121,6 +139,9 @@ function TableList() {
                 <Card.Title as="h4">Manage all your transactions</Card.Title>
                 <p className="card-category">
                   Keep a check of all your spendings.
+                  {totalCount > 0 && (
+                    <span className="ms-2 text-muted">({data.length} of {totalCount} shown)</span>
+                  )}
                 </p>
               </Card.Header>
               <Card.Body className="table-full-width table-responsive px-0">
@@ -148,6 +169,7 @@ function TableList() {
                           date={transaction.date}
                           paymentMode={transaction.paymentMode}
                           deleteTransaction={deleteTrans}
+                          onUpdate={updateTrans}
                           _id={transaction._id}
                         />
                       )
@@ -158,6 +180,13 @@ function TableList() {
                     )}
                   </tbody>
                 </Table>
+                {hasMore && (
+                  <div className="text-center py-3">
+                    <Button variant="outline-primary" onClick={loadMore} disabled={loadingMore}>
+                      {loadingMore ? 'Loading…' : 'Load more transactions'}
+                    </Button>
+                  </div>
+                )}
               </Card.Body>
             </Card>
           </Col>
@@ -207,6 +236,7 @@ function TableList() {
                   <Form.Group controlId="formGridCat">
                     <Form.Label>Category</Form.Label>
                     <Form.Control as="select"
+                      value={newCategory}
                       onChange={(e) => setNewCategory(e.target.value)}
                       required
                     >
@@ -225,6 +255,7 @@ function TableList() {
                   <Form.Group>
                     <Form.Label>Mode of Payment</Form.Label>
                     <Form.Control as="select"
+                      value={newPaymentMode}
                       onChange={(e) => setNewPaymentMode(e.target.value)}
                       required
                     >
