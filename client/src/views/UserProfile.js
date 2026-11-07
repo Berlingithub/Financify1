@@ -1,7 +1,8 @@
 import React,{useState,useEffect} from "react";
 import { getIncome, createIncome, getProfile, updateProfile } from '../api/api';
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
-// react-bootstrap components
 import {
   Button,
   Card,
@@ -14,35 +15,82 @@ var moment = require('moment');
 
 function User() {
 
-  const [data,setData]=useState({});
-  const [profileData,setProfileData]=useState({})
-  const [newAmount,setNewAmount]=useState();
-  const [newDate,setNewDate]=useState();
-  const [newName,setNewName]=useState();
-  const [newEmail,setNewEmail]=useState();
+  const [income,setIncome]=useState({ amount: 0, salaryDate: null });
+  const [name,setName]=useState('');
+  const [email,setEmail]=useState('');
+  const [originalEmail,setOriginalEmail]=useState('');
+  const [currentPassword,setCurrentPassword]=useState('');
+  const [incomeAmount,setIncomeAmount]=useState('');
+  const [incomeDate,setIncomeDate]=useState('');
+
+  const notifySuccess = (msg) => toast.success(msg);
+  const notifyFailure = (msg) => toast.error(msg || 'Something went wrong');
 
   const fetchIncome=async()=>{
-    await getIncome().then((res)=>{
-      setData(res.data)
-    }).catch(e=>console.log(e.message))
+    try {
+      const res = await getIncome();
+      setIncome(res.data || { amount: 0 });
+      if (res.data?.amount != null) setIncomeAmount(String(res.data.amount));
+      if (res.data?.salaryDate) {
+        setIncomeDate(moment(res.data.salaryDate).format('YYYY-MM-DD'));
+      }
+    } catch (e) {
+      notifyFailure(e.response?.data?.message);
+    }
   }
   const fetchUserProfile=async()=>{
-    await getProfile().then((res)=>{
-      setProfileData(res.data)
-    }).catch(e=>console.log(e.message))
+    try {
+      const res = await getProfile();
+      setName(res.data.name || '');
+      setEmail(res.data.email || '');
+      setOriginalEmail(res.data.email || '');
+    } catch (e) {
+      notifyFailure(e.response?.data?.message);
+    }
   }
-  const updateUserProfile=async(name,email)=>{
-    await updateProfile({name,email}).then((res)=>{
-      setProfileData({ name: res.data.name, email: res.data.email })
-    }).catch(e=>console.log(e.message))
+  const emailChanging =
+    email.trim().toLowerCase() !== originalEmail.trim().toLowerCase();
+
+  const updateUserProfile=async()=>{
+    if (emailChanging && !currentPassword) {
+      notifyFailure('Enter your current password to change email');
+      return;
+    }
+    try {
+      const payload = {
+        name: name.trim(),
+        email: email.trim(),
+      };
+      if (emailChanging) payload.currentPassword = currentPassword;
+      const res = await updateProfile(payload);
+      setName(res.data.name);
+      setEmail(res.data.email);
+      setOriginalEmail(res.data.email);
+      setCurrentPassword('');
+      notifySuccess('Profile updated');
+    } catch (e) {
+      notifyFailure(e.response?.data?.message);
+    }
   }
   
-  const postIncome=async(amount,salaryDate)=>{
-    console.log({amount,salaryDate})
-    await createIncome({amount,salaryDate}).then((res)=>{
-      console.log(res.data)
-      fetchIncome()
-    }).catch(e=>console.log(e.message))
+  const postIncome=async()=>{
+    const amount = incomeAmount === '' ? income.amount : Number(incomeAmount);
+    const salaryDate = incomeDate || income.salaryDate;
+    if (Number.isNaN(amount) || amount < 0) {
+      notifyFailure('Enter a valid income amount');
+      return;
+    }
+    if (!salaryDate) {
+      notifyFailure('Select your salary date');
+      return;
+    }
+    try {
+      await createIncome({ amount, salaryDate });
+      await fetchIncome();
+      notifySuccess('Income updated');
+    } catch (e) {
+      notifyFailure(e.response?.data?.message);
+    }
   }
   useEffect(()=>{
     fetchIncome()
@@ -51,6 +99,7 @@ function User() {
 
   return (
     <>
+      <ToastContainer />
       <Container fluid>
         <Row>
           <Col md="8">
@@ -59,18 +108,20 @@ function User() {
                 <Card.Title as="h4">Edit Profile</Card.Title>
               </Card.Header>
               <Card.Body>
-                <Form>
+                <Form onSubmit={(e) => { e.preventDefault(); updateUserProfile(); }}>
                   <Row>
                     <Col className="pl-3" md="12">
                       <Form.Group>
-                        <label htmlFor="exampleInputEmail1">
+                        <label htmlFor="profileEmail">
                           Email address
                         </label>
                         <Form.Control
-                          defaultValue={profileData.email}
+                          id="profileEmail"
+                          value={email}
                           placeholder="Email"
                           type="email"
-                          onChange={(e)=>setNewEmail(e.target.value)}
+                          onChange={(e)=>setEmail(e.target.value)}
+                          required
                         ></Form.Control>
                       </Form.Group>
                     </Col>
@@ -78,20 +129,39 @@ function User() {
                   <Row>
                     <Col className="pl-3" md="12">
                       <Form.Group>
-                        <label>Name</label>
+                        <label htmlFor="profileName">Name</label>
                         <Form.Control
-                          defaultValue={profileData.name}
+                          id="profileName"
+                          value={name}
                           placeholder="Name"
-                          onChange={(e)=>setNewName(e.target.value)}
+                          onChange={(e)=>setName(e.target.value)}
                           type="text"
+                          required
                         ></Form.Control>
                       </Form.Group>
                     </Col>
                   </Row>
+                  {emailChanging && (
+                    <Row>
+                      <Col className="pl-3" md="12">
+                        <Form.Group>
+                          <label htmlFor="profilePassword">Current password</label>
+                          <Form.Control
+                            id="profilePassword"
+                            type="password"
+                            value={currentPassword}
+                            placeholder="Required to change email"
+                            onChange={(e) => setCurrentPassword(e.target.value)}
+                            autoComplete="current-password"
+                          />
+                        </Form.Group>
+                      </Col>
+                    </Row>
+                  )}
                   <Button
                     className="btn-fill pull-right"
                     variant="info"
-                    onClick={()=>updateUserProfile(newName,newEmail)}
+                    type="submit"
                   >
                     Update Profile
                   </Button>
@@ -126,8 +196,6 @@ function User() {
                 </div>
               </div>
               <Card.Body>
-                
-                
                 <div className="author"
                   style={{
                     textAlign: "center",
@@ -135,90 +203,9 @@ function User() {
                     position: "relative",
                   }}
                 >
-                  <a
-                    href="#pablo"
-                    onClick={(e) => e.preventDefault()}
-                    style={{ textDecoration: "none", display: "block" }}
-                  >
-                    {/* PROFILE CIRCLE */}
-                    <div
-                      style={{
-                        width: "80px",
-                        height: "80px",
-                        borderRadius: "50%",
-                        border: "3px solid #fff",
-                        boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
-                        background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        position: "absolute",
-                        top: "-40px",
-                        left: "50%",
-                        transform: "translateX(-50%)",
-                        zIndex: 2,
-                        overflow: "hidden",
-                      }}
-                    >
-                      <img
-                        alt="User Profile"
-                        src={require("../assets/images/user.png").default}
-                        style={{
-                          width: "calc(100% - 6px)",
-                          height: "calc(100% - 6px)",
-                          borderRadius: "50%",
-                          objectFit: "cover",
-                          position: "absolute",
-                          top: "3px",
-                          left: "3px",
-                        }}
-                      />
-
-                      {/* fallback icon */}
-                      <div
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          zIndex: 3,
-                        }}
-                      >
-                        <i
-                          className="fas fa-user"
-                          style={{
-                            fontSize: "20px",
-                            color: "white",
-                            marginBottom: "2px",
-                          }}
-                        ></i>
-                        <span
-                          style={{
-                            fontSize: "8px",
-                            color: "white",
-                            fontWeight: "bold",
-                            lineHeight: "1",
-                          }}
-                        >
-                          PROFILE
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* USER NAME */}
-                    <h5
-                      className="title"
-                      style={{
-                        marginTop: "10px",
-                        color: "#333",
-                        fontWeight: "600",
-                        fontSize: "18px",
-                        marginBottom: "8px",
-                      }}
-                    >
-                      {profileData.name || "User Name"}
-                    </h5>
-                  </a>
+                  <h5 className="title" style={{ marginTop: "10px", color: "#333", fontWeight: "600" }}>
+                    {name || "User Name"}
+                  </h5>
                 </div>
               </Card.Body>
             </Card>
@@ -229,16 +216,17 @@ function User() {
                 <Card.Title as="h4">Income Details</Card.Title>
               </Card.Header>
               <Card.Body>
-                <Form>
+                <Form onSubmit={(e) => { e.preventDefault(); postIncome(); }}>
                   <Row>
                     <Col className="pr-1" md="6">
                       <Form.Group>
                         <label>TOTAL INCOME</label>
                         <Form.Control
-                          defaultValue={data.amount}
-                          onChange={(e)=>setNewAmount(e.target.value)}
+                          value={incomeAmount}
+                          onChange={(e)=>setIncomeAmount(e.target.value)}
                           placeholder="income"
                           type="number"
+                          min="0"
                         ></Form.Control>
                       </Form.Group>
                     </Col>
@@ -248,7 +236,9 @@ function User() {
                         <Form.Control
                           placeholder="Date"
                           type="date"
-                          onChange={(e)=>setNewDate(e.target.value)}
+                          value={incomeDate}
+                          onChange={(e)=>setIncomeDate(e.target.value)}
+                          required
                         ></Form.Control>
                       </Form.Group>
                     </Col>
@@ -256,7 +246,7 @@ function User() {
                   <Button
                     className="btn-fill pull-right"
                     variant="info"
-                    onClick={()=>postIncome(newAmount,newDate)}
+                    type="submit"
                   >
                     Update Income
                   </Button>
