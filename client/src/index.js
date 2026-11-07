@@ -1,4 +1,4 @@
-import React,{createContext} from "react";
+import React from "react";
 import ReactDOM from "react-dom";
 import { BrowserRouter, Routes, Route , Navigate } from "react-router-dom";
 
@@ -19,7 +19,7 @@ import NotFound from './components/NotFound';
 
 ReactDOM.render(
   <React.StrictMode>
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Routes>
         
         <Route path="/admin/*" element={
