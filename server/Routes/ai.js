@@ -1,8 +1,18 @@
 const express = require('express');
 const multer = require('multer');
+const rateLimit = require('express-rate-limit');
 const { parseReceiptImage } = require('../services/aiService');
+const { IS_PRODUCTION } = require('../config/env');
 
 const router = express.Router();
+
+const receiptScanLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: IS_PRODUCTION ? 30 : 120,
+  message: { message: 'Receipt scan limit reached. Please try again in an hour.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -17,7 +27,7 @@ const upload = multer({
   },
 });
 
-router.post('/receipt', (req, res, next) => {
+router.post('/receipt', receiptScanLimiter, (req, res, next) => {
   upload.single('receipt')(req, res, (err) => {
     if (err instanceof multer.MulterError) {
       if (err.code === 'LIMIT_FILE_SIZE') {
