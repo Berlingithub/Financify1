@@ -1,0 +1,8 @@
+function parsePageLimit(query, { defaultLimit = 50, maxLimit = 100 } = {}) {
+  const page = Math.max(1, parseInt(query.page, 10) || 1);
+  const rawLimit = parseInt(query.limit, 10) || defaultLimit;
+  const limit = Math.min(Math.max(1, rawLimit), maxLimit);
+  return { page, limit, skip: (page - 1) * limit };
+}
+
+module.exports = { parsePageLimit };
