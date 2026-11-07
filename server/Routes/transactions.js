@@ -2,14 +2,17 @@ const express = require('express');
 const router = express.Router();
 const User = require('../Models/User');
 const Wallet = require('../Models/Wallet');
-const { validateTransactionInput } = require('../utils/transactionValidation');
+const {
+  validateTransactionInput,
+  CATEGORIES,
+  PAYMENT_MODES,
+} = require('../utils/transactionValidation');
+const { parsePageLimit } = require('../utils/pagination');
 
 router.get('/', async (req, res) => {
   try {
     const { _id } = req.user;
-    const page = parseInt(req.query.page, 10) || 1;
-    const limit = parseInt(req.query.limit, 10) || 50;
-    const skip = (page - 1) * limit;
+    const { page, limit, skip } = parsePageLimit(req.query, { defaultLimit: 50, maxLimit: 100 });
 
     const userData = await User.findById(_id).populate('wallet');
     if (!userData?.wallet) {
@@ -49,7 +52,6 @@ router.post('/', async (req, res) => {
 
     const userWallet = await Wallet.findById(userData.wallet._id);
     userWallet.transactions.push(validation.data);
-    userWallet.amountSpent += validation.data.amount;
     await userWallet.save();
 
     res.status(201).json({
@@ -82,7 +84,6 @@ router.delete('/', async (req, res) => {
       return res.status(404).json({ message: 'Transaction not found' });
     }
 
-    userWallet.amountSpent -= Number(transaction.amount);
     transaction.deleteOne();
     await userWallet.save();
 
@@ -113,8 +114,6 @@ router.put('/', async (req, res) => {
       return res.status(404).json({ message: 'Transaction not found' });
     }
 
-    const oldAmount = transactionToUpdate.amount;
-
     if (name !== undefined) {
       if (!name.trim()) {
         return res.status(400).json({ message: 'Transaction name cannot be empty' });
@@ -122,17 +121,31 @@ router.put('/', async (req, res) => {
       transactionToUpdate.name = name.trim();
     }
 
-    if (category !== undefined) transactionToUpdate.category = category;
     if (amount !== undefined) {
       const parsedAmount = Number(amount);
       if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
         return res.status(400).json({ message: 'Amount must be a positive number' });
       }
       transactionToUpdate.amount = parsedAmount;
-      userWallet.amountSpent = userWallet.amountSpent - oldAmount + parsedAmount;
     }
-    if (date !== undefined) transactionToUpdate.date = date;
-    if (paymentMode !== undefined) transactionToUpdate.paymentMode = paymentMode;
+    if (category !== undefined) {
+      if (!CATEGORIES.includes(category)) {
+        return res.status(400).json({ message: 'Valid category is required' });
+      }
+      transactionToUpdate.category = category;
+    }
+    if (date !== undefined && date !== null && date !== '') {
+      if (Number.isNaN(new Date(date).getTime())) {
+        return res.status(400).json({ message: 'Invalid date' });
+      }
+      transactionToUpdate.date = new Date(date);
+    }
+    if (paymentMode !== undefined) {
+      if (!PAYMENT_MODES.includes(paymentMode)) {
+        return res.status(400).json({ message: 'Valid payment mode is required' });
+      }
+      transactionToUpdate.paymentMode = paymentMode;
+    }
 
     await userWallet.save();
     res.status(200).json({ message: 'Transaction updated successfully', wallet: userWallet });
