@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 
 const walletSchema = new mongoose.Schema({
 
+    /** @deprecated Derived from transactions via walletAnalytics; not updated on writes */
     amountSpent:{
         type:Number,
         default:0
@@ -29,7 +30,7 @@ const walletSchema = new mongoose.Schema({
         },
         repeatDuration:{
             type:String,
-            enum:["Monthly","Annually","Annully"]
+            enum:["Monthly","Annually"]
         },
         date:{
             type:Date,
