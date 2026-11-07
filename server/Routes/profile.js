@@ -20,7 +20,7 @@ router.get('/', async (req, res) => {
 router.put('/', async (req, res) => {
   try {
     const { _id } = req.user;
-    const { name, email } = req.body;
+    const { name, email, currentPassword } = req.body;
 
     if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ message: 'Name is required' });
@@ -36,7 +36,25 @@ router.put('/', async (req, res) => {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
-    if (normalizedEmail !== userData.email) {
+    const emailChanging = normalizedEmail !== userData.email.toLowerCase();
+
+    if (emailChanging) {
+      if (!currentPassword || typeof currentPassword !== 'string') {
+        return res.status(400).json({
+          message: 'Current password is required to change your email',
+        });
+      }
+
+      const verified = await new Promise((resolve) => {
+        userData.authenticate(currentPassword, (err, user) => {
+          resolve(Boolean(user) && !err);
+        });
+      });
+
+      if (!verified) {
+        return res.status(400).json({ message: 'Current password is incorrect' });
+      }
+
       const existing = await User.findOne({ email: normalizedEmail });
       if (existing) {
         return res.status(400).json({ message: 'Email is already in use' });
