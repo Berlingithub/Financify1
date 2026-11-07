@@ -4,20 +4,29 @@ const router = express.Router();
 const User = require("../Models/User");
 const Wallet = require("../Models/Wallet");
 const passport = require('passport');
-const { isLoggedIn } = require('../middlewares');
 const { IS_PRODUCTION, SECURE_COOKIES, COOKIE_SAME_SITE } = require('../config/env');
 const { sanitizeUser } = require('../utils/sanitizeUser');
+const { validatePassword } = require('../utils/passwordValidation');
 
-// Rate limiting for authentication endpoints (prevent brute force attacks)
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: IS_PRODUCTION ? 5 : 50,
-  message: { message: 'Too many login attempts, please try again after 15 minutes' },
+const limiterOptions = {
+  windowMs: 15 * 60 * 1000,
   standardHeaders: true,
   legacyHeaders: false,
+};
+
+const loginLimiter = rateLimit({
+  ...limiterOptions,
+  max: IS_PRODUCTION ? 15 : 100,
+  message: { message: 'Too many login attempts, please try again after 15 minutes' },
 });
 
-router.post('/login', authLimiter, (req, res, next) => {
+const registerLimiter = rateLimit({
+  ...limiterOptions,
+  max: IS_PRODUCTION ? 10 : 100,
+  message: { message: 'Too many registration attempts, please try again after 15 minutes' },
+});
+
+router.post('/login', loginLimiter, (req, res, next) => {
     passport.authenticate("local", (err, user, info) => {
         if (err) {
             console.error("❌ Authentication error:", err);
@@ -38,9 +47,12 @@ router.post('/login', authLimiter, (req, res, next) => {
                     console.error("❌ Session save error:", saveErr);
                     return res.status(500).json({ message: "Login failed" });
                 }
+                const redirectUrl = req.session.returnTo || null;
+                if (req.session.returnTo) delete req.session.returnTo;
                 res.status(200).json({
                     message: "Login successful",
                     user: sanitizeUser(req.user),
+                    redirectUrl,
                 });
             });
         });
@@ -48,9 +60,17 @@ router.post('/login', authLimiter, (req, res, next) => {
 })
 
 
-router.post('/register', authLimiter, async (req, res, next) => {
+router.post('/register', registerLimiter, async (req, res, next) => {
+    let registeredUser = null;
+    let createdWalletId = null;
+
     try {
         const { email, name, password } = req.body;
+
+        const passwordCheck = validatePassword(password);
+        if (!passwordCheck.valid) {
+            return res.status(400).json({ message: passwordCheck.message });
+        }
 
         // Check if user already exists
         const existingUser = await User.findOne({ email });
@@ -60,15 +80,15 @@ router.post('/register', authLimiter, async (req, res, next) => {
 
         const user = new User({ email, name });
 
-        const registeredUser = await User.register(user, password);
-        
-        // Create wallet for the user
+        registeredUser = await User.register(user, password);
+
         const newWallet = new Wallet();
         await newWallet.save();
-        
+        createdWalletId = newWallet._id;
+
         registeredUser.wallet = newWallet._id;
         await registeredUser.save();
-        
+
         console.log("✅ User registered successfully");  // Don't log sensitive user data
 
         // Log in the user
@@ -90,6 +110,12 @@ router.post('/register', authLimiter, async (req, res, next) => {
         });
 
     } catch (error) {
+        if (registeredUser?._id) {
+            await User.findByIdAndDelete(registeredUser._id).catch(() => {});
+        }
+        if (createdWalletId) {
+            await Wallet.findByIdAndDelete(createdWalletId).catch(() => {});
+        }
         console.error("Registration error:", error);
         if (error.name === 'ValidationError') {
             return res.status(400).json({ message: "Validation error: " + error.message });
