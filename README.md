@@ -6,7 +6,7 @@ Financify is a modern full-stack web application built with the MERN stack (Mong
 
 ![Status](https://img.shields.io/badge/Status-Production%20Ready-brightgreen)
 ![React](https://img.shields.io/badge/React-17.0.2-blue)
-![Node.js](https://img.shields.io/badge/Node.js-14+-green)
+![Node.js](https://img.shields.io/badge/Node.js-18+-green)
 ![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-blue)
 
 ## About the project
@@ -84,10 +84,10 @@ Full control over your profile:
 - Styled Components
 
 **Backend:**
-- Node.js 14+
+- Node.js 18+
 - Express.js 4.x
 - MongoDB Atlas
-- Mongoose 5.x
+- Mongoose 8.x
 - Passport.js (Local Strategy)
 - Express Session
 - Connect-Mongo
@@ -97,7 +97,7 @@ Full control over your profile:
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js v14 or higher
+- Node.js v18 or higher
 - npm (comes with Node.js)
 - Modern browser (Chrome, Firefox, Edge, Safari)
 - MongoDB Atlas account (free tier works)
@@ -147,6 +147,10 @@ ALLOWED_ORIGINS=http://localhost:3000,https://your-domain.com
 ```bash
 # Starts both backend (port 3001) and frontend (port 3000)
 npm start
+
+# Or run separately in two terminals:
+# npm run dev:server   # API with nodemon
+# npm run dev:client   # React dev server
 ```
 
 **5. Open your browser**
@@ -231,7 +235,7 @@ npm run dev:server
 # Build React app for production
 npm run build
 
-# Build and start server
+# Build client, then start API + dev client (deploy frontend separately, e.g. Vercel)
 npm run serve
 
 # Install all dependencies at once
@@ -304,7 +308,7 @@ Quick Actions:
 
 - **Password encryption**: bcrypt hashing
 - **Session-based authentication**: Secure cookies with httpOnly flag
-- **CSRF protection**: SameSite cookie policy
+- **CSRF mitigation**: SameSite cookies locally; production requires `Origin`/`Referer` + `X-Requested-With` on API mutations
 - **Input validation**: Server-side checks on all inputs
 - **Rate limiting**: Brute force attack prevention
 - **MongoDB Atlas**: Encrypted cloud database
@@ -331,7 +335,20 @@ Quick Actions:
 - End date
 - Completed status (boolean)
 
+## 📈 Scale & limits
+
+Transactions live inside each user’s **Wallet** document in MongoDB. That keeps the app simple but has a practical ceiling (roughly **thousands** of transactions per user before saves slow down). The API paginates lists (max **100** per request) and monthly totals are computed from transaction dates—not the legacy `amountSpent` field. For very large histories, a future migration would move transactions into their own collection.
+
+Static assets live under `client/src/assets/images/` only (an older duplicate `client/src/images/` folder may still exist locally—you can delete it if present; nothing imports from it).
+
 ## 🐛 Troubleshooting
+
+### MongoDB / "Cannot reach the backend server"?
+Windows often fails `mongodb+srv` DNS (`querySrv` / No SRV records). The server retries and falls back to DNS-over-HTTPS. If it still exits:
+
+1. In Atlas, unpause the cluster and add your IP (or `0.0.0.0/0` for local dev).
+2. Put a **standard** (`mongodb://` with `host1:27017,host2:27017,...`) URI in `.env` as `DATABASE_KEY_DIRECT`.
+3. Restart with `npm start`. Signup needs the API on port **3001**.
 
 ### Can't login/register?
 - Check browser console (F12) for errors
