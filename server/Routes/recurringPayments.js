@@ -1,17 +1,20 @@
 const express = require('express');
 const router = express.Router();
-const User = require('../Models/User')
-const Wallet = require('../Models/Wallet')
+const User = require('../Models/User');
+const Wallet = require('../Models/Wallet');
+const { validateRecurringInput, REPEAT_DURATIONS } = require('../utils/recurringValidation');
+const { parsePageLimit } = require('../utils/pagination');
 
 router.get('/', async (req, res) => {
     try {
         const { _id } = req.user;
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 20; // Default 20 recurring payments per page
-        const skip = (page - 1) * limit;
+        const { page, limit, skip } = parsePageLimit(req.query, { defaultLimit: 20, maxLimit: 100 });
         
         const userData = await User.findById(_id).populate('wallet');
-        const allPayments = userData.wallet.recurringPayments;
+        if (!userData?.wallet) {
+            return res.status(404).json({ message: 'Wallet not found' });
+        }
+        const allPayments = userData.wallet.recurringPayments || [];
         
         // Paginate recurring payments
         const paginatedPayments = allPayments.slice(skip, skip + limit);
@@ -28,19 +31,31 @@ router.get('/', async (req, res) => {
     }
 })
 
-// add
 router.post('/', async (req, res) => {
+    try {
+        const validation = validateRecurringInput(req.body);
+        if (!validation.valid) {
+            return res.status(400).json({ message: validation.errors.join(', ') });
+        }
 
-    const { name, amount, date, repeatDuration } = req.body;
-    const newPayment = { name, amount, date, repeatDuration };
-    const { _id } = req.user;
-    const userData = await User.findById(_id).populate('wallet')
-    const userWallet = await Wallet.findById(userData.wallet._id);
-    userWallet.recurringPayments.push(newPayment);
-    await userWallet.save()
-    res.json(await User.findById(_id).populate('wallet'))  // Changed from res.send() to res.json()
+        const { _id } = req.user;
+        const userData = await User.findById(_id).populate('wallet');
+        if (!userData?.wallet) {
+            return res.status(404).json({ message: 'Wallet not found' });
+        }
 
-})
+        const userWallet = await Wallet.findById(userData.wallet._id);
+        userWallet.recurringPayments.push(validation.data);
+        await userWallet.save();
+
+        res.status(201).json({
+            message: 'Subscription added successfully',
+            recurringPayments: userWallet.recurringPayments,
+        });
+    } catch (e) {
+        res.status(400).json({ message: e.message });
+    }
+});
 
 // delete
 router.delete('/', async (req, res) => {
@@ -93,11 +108,31 @@ router.put('/', async (req, res) => {
       return res.status(404).json({ message: "Recurring payment not found" });
     }
 
-    // Update fields if provided
-    if (name !== undefined) paymentToUpdate.name = name;
-    if (amount !== undefined) paymentToUpdate.amount = amount;
-    if (date !== undefined) paymentToUpdate.date = date;
-    if (repeatDuration !== undefined) paymentToUpdate.repeatDuration = repeatDuration;
+    if (name !== undefined) {
+      if (!String(name).trim()) {
+        return res.status(400).json({ message: 'Subscription name cannot be empty' });
+      }
+      paymentToUpdate.name = String(name).trim();
+    }
+    if (amount !== undefined) {
+      const parsedAmount = Number(amount);
+      if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
+        return res.status(400).json({ message: 'Amount must be a positive number' });
+      }
+      paymentToUpdate.amount = parsedAmount;
+    }
+    if (date !== undefined) {
+      if (Number.isNaN(new Date(date).getTime())) {
+        return res.status(400).json({ message: 'Invalid payment date' });
+      }
+      paymentToUpdate.date = new Date(date);
+    }
+    if (repeatDuration !== undefined) {
+      if (!REPEAT_DURATIONS.includes(repeatDuration)) {
+        return res.status(400).json({ message: 'Repeat duration must be Monthly or Annually' });
+      }
+      paymentToUpdate.repeatDuration = repeatDuration;
+    }
 
     await userWallet.save();
     res.status(200).json({ message: "Recurring payment updated successfully", wallet: userWallet });
