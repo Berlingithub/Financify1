@@ -40,13 +40,18 @@ function Dashboard() {
 
   const [data, setData] = useState({});
   const [lastUpdated, setLastUpdated] = useState(new Date());
-  const IncomeTime = moment(data.monthlyIncomeDate).format('DD') 
-  const TimeNow = moment().format('DD')
-  let diff = TimeNow-IncomeTime;
-  if(diff<0){
-    // diff = 30-(Math.abs((IncomeTime-TimeNow)))
-    diff = moment().daysInMonth()- Math.abs(diff);
-  }
+
+  const daysUntilNextSalary = () => {
+    if (!data.monthlyIncomeDate) return '—';
+    const today = moment().startOf('day');
+    const salaryDay = moment(data.monthlyIncomeDate).date();
+    let nextPay = moment(today).date(Math.min(salaryDay, today.daysInMonth()));
+    if (nextPay.isSameOrBefore(today, 'day')) {
+      nextPay = nextPay.add(1, 'month').date(Math.min(salaryDay, nextPay.daysInMonth()));
+    }
+    return nextPay.diff(today, 'days');
+  };
+  const diff = daysUntilNextSalary();
 
   const getData = async () => {
     try {
@@ -218,6 +223,7 @@ function Dashboard() {
             <Card>
               <Card.Header>
                 <Card.Title as="h4">Recent Transactions</Card.Title>
+                <p className="card-category mb-0">Latest activity (all time)</p>
               </Card.Header>
               <Card.Body className="table-full-width table-responsive px-0">
                 <Table className="table-hover table-striped">
@@ -251,7 +257,7 @@ function Dashboard() {
 
                     : (
                       <tr>
-                        <td colSpan="7" className="text-center">No transactions this month</td>
+                        <td colSpan="7" className="text-center">No transactions yet</td>
                       </tr>
                     )}
                   </tbody>
@@ -311,7 +317,9 @@ function Dashboard() {
                   </Col>
                   <Col xs="7">
                     <div className="numbers">
-                      <Card.Title as="h4">{diff} Day(s) Left </Card.Title>
+                      <Card.Title as="h4">
+                        {diff === '—' ? 'Set salary date in profile' : `${diff} Day(s) Left`}
+                      </Card.Title>
                     </div>
                   </Col>
                 </Row>
@@ -328,12 +336,19 @@ function Dashboard() {
                 <div className="table-full-width">
                   <Table>
                     <tbody>
-                      {data.goals?.map((goal, index) => {
-                        return <OverviewGoalsRow
-                          key={index}
+                      {data.goals?.length ? data.goals.map((goal) => (
+                        <OverviewGoalsRow
+                          key={goal._id || goal.goal}
                           goal={goal.goal}
+                          completed={goal.completed}
+                          targetAmount={goal.targetAmount}
+                          currentAmount={goal.currentAmount}
                         />
-                      })}
+                      )) : (
+                        <tr>
+                          <td colSpan="2" className="text-center text-muted">No goals yet</td>
+                        </tr>
+                      )}
 
                     </tbody>
                   </Table>
