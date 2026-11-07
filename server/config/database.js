@@ -5,21 +5,24 @@ const mongoose = require('mongoose');
 const LOCAL_MONGO_URI =
   process.env.DATABASE_KEY_LOCAL || 'mongodb://127.0.0.1:27017/financify';
 
-// Prefer IPv4 for DNS lookups (avoids some Windows/ISP SRV failures)
+const CONNECT_OPTIONS = {
+  family: 4,
+  serverSelectionTimeoutMS: 20000,
+};
+
 dns.setDefaultResultOrder('ipv4first');
 
-// Some Windows/ISP resolvers refuse MongoDB SRV (_mongodb._tcp) queries in Node.
-// Prepend reliable DNS servers unless the user opts into system DNS only.
 if (process.env.MONGODB_USE_SYSTEM_DNS !== 'true') {
   const extra =
     process.env.MONGODB_DNS_SERVERS?.split(',').map((s) => s.trim()).filter(Boolean) ||
     ['8.8.8.8', '1.1.1.1'];
-  dns.setServers([...extra, ...dns.getServers()]);
+  try {
+    dns.setServers([...extra, ...dns.getServers()]);
+  } catch {
+    dns.setServers(extra);
+  }
 }
 
-/**
- * URL-encode credentials so Node 22+ and the driver accept the connection string.
- */
 function normalizeMongoUri(uri) {
   if (!uri) return uri;
 
@@ -39,8 +42,10 @@ function normalizeMongoUri(uri) {
 function isSrvDnsError(err) {
   const msg = err && (err.message || String(err));
   return (
-    /querySrv|queryTxt|ETIMEOUT|EREFUSED|ENOTFOUND/i.test(msg) ||
-    err.code === 'ECONNREFUSED'
+    /querySrv|queryTxt|ETIMEOUT|EREFUSED|ENOTFOUND|No SRV records|ENODATA|EAI_AGAIN/i.test(msg) ||
+    err.code === 'ECONNREFUSED' ||
+    err.code === 'ENOTFOUND' ||
+    err.code === 'EAI_AGAIN'
   );
 }
 
@@ -58,82 +63,102 @@ function isLocalRuntime() {
 }
 
 function shouldUseLocalMongo() {
-  return (
-    process.env.USE_LOCAL_MONGODB === 'true' &&
-    isLocalRuntime()
-  );
+  return process.env.USE_LOCAL_MONGODB === 'true' && isLocalRuntime();
 }
 
-/**
- * Resolve SRV via DNS-over-HTTPS when the OS resolver fails (common on Windows).
- */
-function resolveSrvViaDoh(srvHost) {
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function dohGet(hostname, path) {
   return new Promise((resolve, reject) => {
-    const url = `https://dns.google/resolve?name=${encodeURIComponent(srvHost)}&type=SRV`;
-    https
-      .get(url, (res) => {
+    const req = https.request(
+      {
+        hostname,
+        path,
+        method: 'GET',
+        headers: { Accept: 'application/dns-json' },
+        timeout: 8000,
+      },
+      (res) => {
         let body = '';
         res.on('data', (chunk) => {
           body += chunk;
         });
-        res.on('end', () => {
-          try {
-            const data = JSON.parse(body);
-            const answers = data.Answer || [];
-            const records = answers
-              .filter((a) => a.type === 33)
-              .map((a) => {
-                const parts = a.data.trim().split(/\s+/);
-                const priority = Number(parts[0]);
-                const weight = Number(parts[1]);
-                const port = Number(parts[2]);
-                const name = parts[3].replace(/\.$/, '');
-                return { priority, weight, port, name };
-              });
-            if (!records.length) {
-              reject(new Error(`No SRV records found for ${srvHost}`));
-              return;
-            }
-            resolve(records);
-          } catch (parseErr) {
-            reject(parseErr);
-          }
-        });
-      })
-      .on('error', reject);
+        res.on('end', () => resolve(body));
+      }
+    );
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error(`DoH timeout from ${hostname}`));
+    });
+    req.on('error', reject);
+    req.end();
   });
 }
 
-function resolveTxtViaDoh(srvHost) {
-  return new Promise((resolve) => {
-    const url = `https://dns.google/resolve?name=${encodeURIComponent(srvHost)}&type=TXT`;
-    https
-      .get(url, (res) => {
-        let body = '';
-        res.on('data', (chunk) => {
-          body += chunk;
-        });
-        res.on('end', () => {
-          try {
-            const data = JSON.parse(body);
-            const answers = data.Answer || [];
-            resolve(
-              answers
-                .filter((a) => a.type === 16)
-                .map((a) => a.data.replace(/^"|"$/g, ''))
-            );
-          } catch {
-            resolve([]);
-          }
-        });
-      })
-      .on('error', () => resolve([]));
-  });
+async function fetchDnsJson(name, type) {
+  const encoded = encodeURIComponent(name);
+  const providers = [
+    ['dns.google', `/resolve?name=${encoded}&type=${type}`],
+    ['cloudflare-dns.com', `/dns-query?name=${encoded}&type=${type}`],
+  ];
+
+  let lastErr;
+  for (const [host, path] of providers) {
+    try {
+      const body = await dohGet(host, path);
+      const data = JSON.parse(body);
+      if (Array.isArray(data.Answer) && data.Answer.length) {
+        return data.Answer;
+      }
+      lastErr = new Error(`Empty ${type} answer from ${host} for ${name}`);
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error(`DoH lookup failed for ${name}`);
+}
+
+function parseSrvAnswers(answers, srvHost) {
+  const records = answers
+    .filter((a) => a.type === 33)
+    .map((a) => {
+      const parts = String(a.data).trim().split(/\s+/);
+      if (parts.length < 4) return null;
+      return {
+        priority: Number(parts[0]),
+        weight: Number(parts[1]),
+        port: Number(parts[2]),
+        name: parts[3].replace(/\.$/, ''),
+      };
+    })
+    .filter(Boolean);
+
+  if (!records.length) {
+    throw new Error(`No SRV records found for ${srvHost}`);
+  }
+  return records;
+}
+
+async function resolveSrvViaDoh(srvHost) {
+  const answers = await fetchDnsJson(srvHost, 'SRV');
+  return parseSrvAnswers(answers, srvHost);
+}
+
+async function resolveTxtViaDoh(host) {
+  try {
+    const answers = await fetchDnsJson(host, 'TXT');
+    return answers
+      .filter((a) => a.type === 16)
+      .map((a) => String(a.data).replace(/^"|"$/g, '').replace(/"/g, ''));
+  } catch {
+    return [];
+  }
 }
 
 /**
- * Resolve mongodb+srv hostnames via system DNS and build a standard replica-set URI.
- * Used when the driver's built-in SRV lookup fails on some networks.
+ * mongodb+srv TXT records live on the cluster hostname, not _mongodb._tcp.*
  */
 async function srvUriToStandardUri(srvUri) {
   const match = srvUri.match(
@@ -147,21 +172,17 @@ async function srvUriToStandardUri(srvUri) {
   const srvHost = `_mongodb._tcp.${host}`;
 
   let srvRecords;
-  let txtRecords;
+  let txtRecords = [];
 
   try {
-    [srvRecords, txtRecords] = await Promise.all([
-      dns.promises.resolveSrv(srvHost),
-      dns.promises.resolveTxt(srvHost).catch(() => []),
-    ]);
+    srvRecords = await dns.promises.resolveSrv(srvHost);
+    txtRecords = await dns.promises.resolveTxt(host).catch(() => []);
   } catch (dnsErr) {
     if (!isSrvDnsError(dnsErr)) throw dnsErr;
-    console.log('⚠️  System DNS failed; trying DNS-over-HTTPS...');
-    [srvRecords, txtRecords] = await Promise.all([
-      resolveSrvViaDoh(srvHost),
-      resolveTxtViaDoh(srvHost),
-    ]);
-    txtRecords = txtRecords.map((entry) => [entry]);
+    console.log('⚠️  System DNS failed; trying DNS-over-HTTPS (Google/Cloudflare)...');
+    srvRecords = await resolveSrvViaDoh(srvHost);
+    const txt = await resolveTxtViaDoh(host);
+    txtRecords = txt.map((entry) => [entry]);
   }
 
   if (!srvRecords.length) {
@@ -181,16 +202,39 @@ async function srvUriToStandardUri(srvUri) {
   const existing = new URLSearchParams(query.replace(/^\?/, ''));
   existing.forEach((value, key) => params.set(key, value));
   if (!params.has('ssl') && !params.has('tls')) {
-    params.set('ssl', 'true');
+    params.set('tls', 'true');
+  }
+  if (!params.has('retryWrites')) {
+    params.set('retryWrites', 'true');
+  }
+  if (!params.has('authSource')) {
+    params.set('authSource', 'admin');
   }
 
   const qs = params.toString();
   return `mongodb://${encodedUser}:${encodedPass}@${hosts}${db}${qs ? `?${qs}` : ''}`;
 }
 
+async function connectWithRetry(targetUri, attempts = 3) {
+  let lastErr;
+  for (let i = 1; i <= attempts; i += 1) {
+    try {
+      await mongoose.connect(targetUri, CONNECT_OPTIONS);
+      return normalizeMongoUri(targetUri);
+    } catch (err) {
+      lastErr = err;
+      if (i < attempts) {
+        console.log(`⚠️  MongoDB attempt ${i}/${attempts} failed (${err.message}). Retrying...`);
+        await sleep(2000 * i);
+      }
+    }
+  }
+  throw lastErr;
+}
+
 async function connectLocalDatabase() {
   console.log(`⚠️  Using local MongoDB at ${LOCAL_MONGO_URI}`);
-  await mongoose.connect(LOCAL_MONGO_URI);
+  await mongoose.connect(LOCAL_MONGO_URI, CONNECT_OPTIONS);
   return LOCAL_MONGO_URI;
 }
 
@@ -200,42 +244,49 @@ async function connectDatabase(uri) {
     uri.startsWith('mongodb://127.0.0.1') ||
     uri.startsWith('mongodb://localhost');
 
-  // Explicit local-only mode (never used on Render/production hosts)
   if (shouldUseLocalMongo() || (isLocalUri && isLocalRuntime())) {
     console.log('Using local MongoDB');
     return connectLocalDatabase();
   }
 
-  let connectionUri = normalizeMongoUri(directUri || uri);
-
   if (directUri) {
     console.log('Using DATABASE_KEY_DIRECT (non-SRV connection)');
+    return connectWithRetry(normalizeMongoUri(directUri));
   }
 
-  const tryConnect = async (targetUri) => {
-    await mongoose.connect(targetUri);
-    return normalizeMongoUri(targetUri);
-  };
+  const srvUri = normalizeMongoUri(uri);
 
   try {
-    return await tryConnect(connectionUri);
+    return await connectWithRetry(srvUri);
   } catch (err) {
-    const canSrvFallback =
-      !directUri &&
-      uri.startsWith('mongodb+srv://') &&
-      isSrvDnsError(err);
-
-    if (!canSrvFallback) throw err;
+    if (!uri.startsWith('mongodb+srv://')) throw err;
 
     console.log(
       '⚠️  SRV DNS lookup failed; connecting via resolved hostnames instead...'
     );
-    connectionUri = await srvUriToStandardUri(uri);
-    return await tryConnect(connectionUri);
+    const standardUri = await srvUriToStandardUri(uri);
+    return connectWithRetry(standardUri);
   }
+}
+
+function printMongoHelp(err) {
+  console.error('❌ MongoDB connection error:', err.message);
+  console.log(`
+💡 This is a common Windows/ISP issue with mongodb+srv DNS. Try in order:
+
+  1. Restart: stop npm start (Ctrl+C) and run it again.
+  2. Atlas → Network Access → Add IP Address → Allow Access from Anywhere (0.0.0.0/0) for local dev.
+  3. Atlas → Database → Connect → Drivers → copy the "standard connection string"
+     (starts with mongodb:// not mongodb+srv://) into .env as:
+
+     DATABASE_KEY_DIRECT=mongodb://USER:PASS@host1:27017,host2:27017,host3:27017/financify?tls=true&replicaSet=...&authSource=admin
+
+  4. Confirm the Atlas cluster is not paused (free clusters pause after inactivity).
+`);
 }
 
 module.exports = {
   connectDatabase,
   normalizeMongoUri,
+  printMongoHelp,
 };
