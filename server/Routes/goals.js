@@ -3,15 +3,17 @@ const router = express.Router();
 const Goal = require('../Models/Goals');
 const User = require('../Models/User');
 const { assertGoalOwnership } = require('../utils/goalAuth');
+const { parsePageLimit } = require('../utils/pagination');
 
 router.get('/', async (req, res) => {
   try {
     const { _id } = req.user;
-    const page = parseInt(req.query.page, 10) || 1;
-    const limit = parseInt(req.query.limit, 10) || 20;
-    const skip = (page - 1) * limit;
+    const { page, limit, skip } = parsePageLimit(req.query, { defaultLimit: 20, maxLimit: 100 });
 
     const userData = await User.findById(_id).populate('goals');
+    if (!userData) {
+      return res.status(404).json({ message: 'User not found' });
+    }
     const allGoals = userData.goals || [];
 
     const paginatedGoals = allGoals.slice(skip, skip + limit);
@@ -36,18 +38,26 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ message: 'Goal name is required' });
     }
 
-    if (!targetAmount || typeof targetAmount !== 'number' || targetAmount <= 0) {
+    const parsedTarget = Number(targetAmount);
+    if (Number.isNaN(parsedTarget) || parsedTarget <= 0) {
       return res.status(400).json({ message: 'Target amount must be a positive number' });
     }
 
-    if (currentAmount && (typeof currentAmount !== 'number' || currentAmount < 0)) {
+    const parsedCurrent =
+      currentAmount === undefined || currentAmount === null || currentAmount === ''
+        ? 0
+        : Number(currentAmount);
+    if (Number.isNaN(parsedCurrent) || parsedCurrent < 0) {
       return res.status(400).json({ message: 'Current amount must be a non-negative number' });
+    }
+    if (parsedCurrent > parsedTarget) {
+      return res.status(400).json({ message: 'Current amount cannot exceed target amount' });
     }
 
     const newGoal = new Goal({
       goal: goal.trim(),
-      targetAmount,
-      currentAmount: currentAmount || 0,
+      targetAmount: parsedTarget,
+      currentAmount: parsedCurrent,
       endDate,
       completed: completed || false,
     });
