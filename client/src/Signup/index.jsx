@@ -24,6 +24,12 @@ const Signup = () => {
     setError('');
     setSuccess('');
     
+    if (!password || password.length < 8) {
+      setError('Password must be at least 8 characters');
+      setLoading(false);
+      return;
+    }
+
     try {
       const response = await signUp({ email, password, name });
       console.log("Signup response:", response);

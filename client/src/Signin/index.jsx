@@ -13,7 +13,7 @@ import {
 } from "./SigninElements";
 // import { signIn } from "API";
 import { signIn } from "../api/api";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Spinner } from "reactstrap";
 import { Link } from "react-router-dom";
 
@@ -24,6 +24,8 @@ import favicon from '../assets/images/favicon.png';
 
 const Signin = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const fromPath = location.state?.from?.pathname;
   const [email, setEmail] = React.useState();
   const [password, setPassword] = React.useState();
   const [loading, setLoading] = React.useState(false);
@@ -46,8 +48,12 @@ const Signin = () => {
       const response = await signIn({ email, password });
       console.log("Signin response:", response); // Log the response
       // Wait a bit to ensure session cookie is set
+      const redirect =
+        response.data?.redirectUrl ||
+        fromPath ||
+        '/admin/dashboard';
       setTimeout(() => {
-        navigate("/admin/dashboard");
+        navigate(redirect, { replace: true });
       }, 300);
 
     } catch (e) {
