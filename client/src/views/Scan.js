@@ -35,8 +35,24 @@ function Scan() {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    const allowed = /\.(jpe?g|png|webp)$/i.test(file.name) ||
+      ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(file.type);
+    if (!allowed) {
+      notifyFailure('Please choose a JPEG, PNG, or WebP image');
+      event.target.value = '';
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      notifyFailure('Image must be smaller than 5 MB');
+      event.target.value = '';
+      return;
+    }
+
+    setImagePreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(file);
+    });
     setSelectedFile(file);
-    setImagePreview(URL.createObjectURL(file));
     setParsedReceipt(null);
     setSelectedAmount(null);
   };
@@ -150,14 +166,24 @@ function Scan() {
 
             <Row className="align-items-start">
               <Col md={6}>
-                <Form.Group controlId="formFileReceipt" className="mb-3 text-start">
-                  <Form.Label>Upload receipt (JPEG, PNG, WebP — max 5 MB)</Form.Label>
-                  <Form.Control
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    onChange={handleChange}
+                <Form.Group className="mb-3 text-start">
+                  <Form.Label htmlFor="receipt-file-input">
+                    Upload receipt (JPEG, PNG, WebP — max 5 MB)
+                  </Form.Label>
+                  <input
+                    id="receipt-file-input"
                     ref={fileInputRef}
+                    type="file"
+                    accept="image/*,.jpg,.jpeg,.png,.webp"
+                    onChange={handleChange}
+                    className="form-control"
+                    style={{ height: 'auto', padding: '8px' }}
                   />
+                  {selectedFile && (
+                    <small className="text-success d-block mt-2">
+                      Selected: {selectedFile.name}
+                    </small>
+                  )}
                 </Form.Group>
 
                 {imagePreview && (
