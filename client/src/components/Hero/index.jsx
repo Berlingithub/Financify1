@@ -12,20 +12,14 @@ import {
   ArrowRight,
 } from "./HeroElements";
 import { Button } from "../ButtonElements";
-import { Link } from "react-router-dom";
-import { useNavigate } from "react-router-dom";
-
+import { Link as RouterLink } from "react-router-dom";
 
 const Hero = () => {
-  const navigate = useNavigate();
   const [hover, setHover] = useState(false);
 
   const onHover = () => {
     setHover(!hover);
   };
-  const redirectSignUp=()=>{
-    navigate("/signup");
-  }
 
   return (
     <HeroContainer id="home">
@@ -39,18 +33,13 @@ const Hero = () => {
           transactions and subscriptions.
         </HeroP>
         <HeroBtnWrapper>
-        <Button onMouseEnter={onHover}
-                onMouseLeave={onHover} 
-                // primary='true'
-                $primary 
-                // dark='true' 
-                $dark
-                smooth={true} 
-                duration={500} 
-                spy={true} 
-                onClick={redirectSignUp}
-                exact='true' 
-                offset={-80}>
+        <Button
+                as={RouterLink}
+                to="/signup"
+                onMouseEnter={onHover}
+                onMouseLeave={onHover}
+                $primary
+                $dark>
           Get Started
           {hover ? <ArrowForward /> : <ArrowRight/>}
           </Button>
