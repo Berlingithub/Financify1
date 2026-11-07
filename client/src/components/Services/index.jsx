@@ -1,8 +1,5 @@
 import React from 'react'
-// import Icon1 from "../../images/svg-1.svg"
 import Icon1 from '../../assets/images/svg-1.svg';
-// import Icon2 from "../../images/svg-2.svg"
-// import Icon3 from "../../images/svg-3.svg"
  import svg2 from '../../assets/images/svg-2.svg';
  import svg3 from '../../assets/images/svg-3.svg';
 

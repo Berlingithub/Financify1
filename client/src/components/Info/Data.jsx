@@ -1,6 +1,3 @@
-// import svg1 from '../../images/svg-4.svg';
-// import svg2 from '../../images/svg-5.svg';
-
 import svg4 from '../../assets/images/svg-4.svg';
 import svg5 from '../../assets/images/svg-5.svg';
 
