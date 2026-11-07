@@ -1,7 +1,6 @@
 import React, { useState } from 'react'
 
 import {
-  Badge,
   Button,
   Card,
   Form,
@@ -10,12 +9,17 @@ import {
 var moment = require('moment');
 
 export default function Goals(props) {
-  const percentage = parseInt((props.currentAmount) / (props.targetAmount) * 100);
+  const target = Number(props.targetAmount) || 0;
+  const current = Number(props.currentAmount) || 0;
+  const percentage = target > 0
+    ? Math.min(100, Math.round((current / target) * 100))
+    : 0;
   const id = props.goals_id;
-  const endDate = moment(props.endDate);
-  const startDate = moment(props.startDate);
-  const daysLeft = (endDate.diff(moment(), 'days') + 1)
-  const [amountToAdd, setAmountToAdd] = useState(0);
+  const endDate = props.endDate ? moment(props.endDate) : null;
+  const daysLeft = endDate?.isValid()
+    ? endDate.diff(moment(), 'days') + 1
+    : null;
+  const [amountToAdd, setAmountToAdd] = useState('');
   const barColor = props.completed ? "success" : "primary";
 
 
@@ -26,12 +30,17 @@ export default function Goals(props) {
           <Card.Title as="h3" >
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <div>{props.goal}
-               {!props.completed && <Button className="mx-2 btn btn-sm btn-fill">{daysLeft} Days Left</Button>}
+               {!props.completed && daysLeft != null && (
+                 <Button className="mx-2 btn btn-sm btn-fill">{Math.max(0, daysLeft)} Days Left</Button>
+               )}
               </div>
               <div>
+                {!props.completed && (
                 <Button className="btn btn-fill mx-1 btn-primary btn-sm"
                   onClick={() => props.markCompleted(id)}
-                >Mark as completed</Button></div>
+                >Mark as completed</Button>
+                )}
+              </div>
             </div>
           </Card.Title>
         </Card.Header>
@@ -52,19 +61,25 @@ export default function Goals(props) {
             <Form className="form-inline float-right">
               <Form.Control
                 placeholder="Add Amount"
-                type="Number"
+                type="number"
                 min="0"
+                step="0.01"
                 value={amountToAdd}
-                onChange={(e) => setAmountToAdd(e.target.valueAsNumber)}
+                onChange={(e) => setAmountToAdd(e.target.value)}
               ></Form.Control>
               <Button className="btn btn-fill mx-1"
                 onClick={() => {
-                  props.updateAmount(id, amountToAdd)
+                  const amt = parseFloat(amountToAdd);
+                  if (Number.isNaN(amt) || amt <= 0) return;
+                  props.updateAmount(id, amt);
+                  setAmountToAdd('');
                 }}
               >Add Money</Button>
               <Button className="btn btn-fill mx-1 btn-danger" onClick={() => props.deleteGoal(id)}>Delete Goal</Button>
             </Form>
-            <span>Deadline: {moment(props.endDate).format("DD/MM/YYYY")} </span>
+            {endDate?.isValid() && (
+              <span>Deadline: {endDate.format("DD/MM/YYYY")} </span>
+            )}
             <br />
             <span>Date set: {moment(props.startDate).format("DD/MM/YYYY")} </span>
           </div>

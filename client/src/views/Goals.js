@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { getGoal, setGoal, updateGoal, deleteGoal, addAmount, completeGoal } from '../api/api';
+import { getGoal, setGoal, deleteGoal, addAmount, completeGoal } from '../api/api';
 import Goals from "../components/Goals";
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -39,38 +39,59 @@ function Maps() {
     });
 
   const [allGoals, setAllGoals] = useState([]);
-  // 
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [newGoal, setNewGoal] = useState("");
   const [newtargetAmount, setNewtargetAmount] = useState("");
   const [newcurrentAmount, setNewcurrentAmount] = useState("");
   const [newendDate, setNewendDate] = useState("");
   const [newcompleted, setNewcompleted] = useState("");
 
-  const fetchGoals = async () => {
-    await getGoal().then((res) => {
-      console.log(res.data);
-      // Handle both old format (array) and new paginated format (object with goals array)
-      if (Array.isArray(res.data)) {
-        setAllGoals(res.data);
-      } else if (res.data && res.data.goals) {
-        setAllGoals(res.data.goals);
-      } else {
-        setAllGoals([]);
-      }
-    }).catch(e => console.log(e.message))
-  }
+  const GOAL_PAGE_SIZE = 20;
+
+  const applyGoalsResponse = (res, append) => {
+    const payload = res.data;
+    let list = [];
+    if (Array.isArray(payload)) {
+      list = payload;
+    } else if (payload?.goals) {
+      list = payload.goals;
+      setHasMore(Boolean(payload.hasMore));
+    }
+    setAllGoals((prev) => (append ? [...prev, ...list] : list));
+  };
+
+  const fetchGoalsPage = async (pageNum, append = false) => {
+    const res = await getGoal(pageNum, GOAL_PAGE_SIZE);
+    applyGoalsResponse(res, append);
+    setPage(pageNum);
+  };
+
+  const fetchGoals = () => fetchGoalsPage(1, false);
+
+  const loadMoreGoals = async () => {
+    if (!hasMore || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      await fetchGoalsPage(page + 1, true);
+    } catch (e) {
+      notifyFailure(e.response?.data?.message || e.message);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
   const createNewGoal = async (e) => {
     e.preventDefault()
     
     // Validate inputs
-    if (!newGoal || !newtargetAmount || !newcurrentAmount) {
-      notifyFailure("Please fill all required fields")
+    if (!newGoal || !newtargetAmount) {
+      notifyFailure("Please enter a goal name and target amount")
       return
     }
     
-    // Convert to numbers
     const targetAmt = parseFloat(newtargetAmount)
-    const currentAmt = parseFloat(newcurrentAmount)
+    const currentAmt = newcurrentAmount === '' ? 0 : parseFloat(newcurrentAmount)
     
     if (isNaN(targetAmt) || targetAmt <= 0) {
       notifyFailure("Target amount must be a positive number")
@@ -120,11 +141,14 @@ function Maps() {
     }).catch(e=>notifyFailure())
   }
   const updateCurrentAmount = async(id,amount)=>{
-    await addAmount({ goals_id:id,amountToBeAdded:amount }).then(res=>{
-      console.log(res.data)
+    if (Number.isNaN(amount) || amount <= 0) {
+      notifyFailure('Enter a positive amount to add');
+      return;
+    }
+    await addAmount({ goals_id:id,amountToBeAdded:amount }).then(()=>{
       notifySuccess("Successfully Updated")
       fetchGoals()
-    }).catch(e=>notifyFailure())
+    }).catch(e=>notifyFailure(e.response?.data?.message))
   }
   const markCompleted=async(id)=>{
     await completeGoal({goals_id:id}).then(res=>{
@@ -148,6 +172,7 @@ function Maps() {
           {allGoals.map(goal=>{
             return (
               <Goals
+              key={goal._id}
               goal={goal.goal}
               targetAmount={goal.targetAmount}
               currentAmount={goal.currentAmount}
@@ -162,6 +187,13 @@ function Maps() {
             )
           })
           }
+          {hasMore && (
+            <div className="text-center py-3">
+              <Button variant="outline-primary" onClick={loadMoreGoals} disabled={loadingMore}>
+                {loadingMore ? 'Loading…' : 'Load more goals'}
+              </Button>
+            </div>
+          )}
 
           </Col>
           <Col md="12">
